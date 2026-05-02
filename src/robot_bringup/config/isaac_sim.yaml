@@ -1,0 +1,13 @@
+isaac_sim:
+  ros__parameters:
+    # Fizyka
+    physics_dt: 0.01        # krok fizyki [s] (100 Hz)
+    render_dt: 0.05         # krok renderowania [s] (20 Hz)
+
+    # Środowisko
+    world_scale: 1.0
+
+    # Robot — startowa pozycja
+    robot_start_x: 0.0
+    robot_start_y: 0.0
+    robot_start_z: -5.0     # [m] pod wodą

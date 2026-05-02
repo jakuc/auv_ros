@@ -1,0 +1,55 @@
+services:
+  auv_ros:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: auv_ros:isaac
+    container_name: auv_isaac
+
+    # GPU passthrough - wymaga nvidia-container-toolkit na hoscie
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, graphics, display]
+
+    # Host network - ROS2 DDS discovery działa bez konfiguracji
+    network_mode: host
+
+    # Shared memory - wymagane dla dużych wiadomości ROS2 (PointCloud2)
+    ipc: host
+    shm_size: 2gb
+
+    environment:
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - OMNI_KIT_ALLOW_ROOT=1
+      - ISAACSIM_ACCEPT_EULA=YES
+      - ROS_LOG_DIR=/workspace/log
+
+    volumes:
+      # Kod źródłowy - edytujesz na hoscie, kontener widzi natychmiast
+      - ../src:/workspace/src
+      # Artefakty build przeżywają restart kontenera (named volumes)
+      - ros_ws_build:/workspace/build
+      - ros_ws_install:/workspace/install
+      - ../log:/workspace/log
+      # X11 - GUI (RViz, Isaac Sim)
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      # Isaac Sim cache – rozszerzenia Kit pobierane przy pierwszym uruchomieniu
+      - isaac_cache:/root/.local/share/ov
+      # Isaac Sim shader cache – kompilacja shaderów RTX (bez tego ~10 min przy każdym starcie)
+      - isaac_shader_cache:/root/.cache/ov
+
+    stdin_open: true
+    tty: true
+
+volumes:
+  ros_ws_build:
+  ros_ws_install:
+  isaac_cache:
+  isaac_shader_cache:

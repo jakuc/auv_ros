@@ -1,0 +1,16 @@
+# ROS 2 build artifacts
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Lokalne narzędzia
+.claude/
+.vscode/
+
+# Misc
+.DS_Store
