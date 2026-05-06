@@ -1,0 +1,25 @@
+fossen:
+  # Fizyczne właściwości robota
+  mass: 15.22             # [kg] suma mas linków URDF (14.8 base + 6×0.07 thrustery)
+  water_surface_z: 0.0    # [m] poziom powierzchni wody w układzie świata
+  draft_z: 0.2552         # [m] całkowita wysokość kadłuba w osi Z
+  keel_from_origin: 0.2552  # [m] odległość od USD origin do dna kadłuba (= draft_z gdy origin przy górnej powierzchni)
+  buoyancy_excess_kg: 0.200  # [kg] nadmiarowy wypór netto (B - W = excess*g)
+  water_density: 1025.0   # [kg/m³] woda morska
+  gravity: 9.81           # [m/s²]
+
+  # Offset środka wyporu (CoB) względem CoG w układzie ciała [m]
+  # Konwencja: X-przód, Y-lewo, Z-góra (zgodnie z Isaac Sim)
+  cob_offset: [0.0, 0.0, 0.02]
+
+  # Dodana masa (przekątna M_A) — model BlueROV2 heavy, Wu 2018
+  # Kolejność: [X_du, Y_dv, Z_dw, K_dp, M_dq, N_dr]
+  added_mass: [5.5, 12.7, 14.57, 0.12, 0.12, 0.12]
+
+  # Tłumienie liniowe (przekątna D_l) — model BlueROV2 heavy
+  # Kolejność: [X_u, Y_v, Z_w, K_p, M_q, N_r]
+  linear_damping: [4.03, 6.22, 5.18, 0.07, 0.07, 0.07]
+
+  # Tłumienie kwadratowe (przekątna D_q) — model BlueROV2 heavy
+  # Kolejność: [X_uu, Y_vv, Z_ww, K_pp, M_qq, N_rr]
+  quadratic_damping: [18.18, 21.66, 36.99, 1.55, 1.55, 1.55]

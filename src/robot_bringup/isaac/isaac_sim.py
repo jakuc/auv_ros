@@ -12,7 +12,13 @@ Publikuje:
     /auv/pose  (geometry_msgs/PoseStamped) – pozycja i orientacja robota, 50 Hz
 """
 
+import sys
 import time
+import pathlib
+import threading
+import yaml
+
+import numpy as np
 
 from isaacsim import SimulationApp
 
@@ -26,17 +32,25 @@ simulation_app = SimulationApp({
 import omni.kit.commands
 import omni.usd
 from omni.isaac.core import World
-from omni.isaac.core.articulations import Articulation
+from omni.isaac.core.articulations import Articulation, ArticulationView
 from omni.isaac.core.prims import XFormPrim
 from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
 
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
-import pathlib
+from std_msgs.msg import Float64MultiArray
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from fossen import FossenPlugin
+from thruster import ThrusterPlugin
 
 # ---------------------------------------------------------------------------
 URDF_PATH = "/tmp/bluerov2.urdf"  # generowany przez sim_robot.sh przed startem
+
+_THIS_DIR         = pathlib.Path(__file__).parent
+_FOSSEN_CONFIG    = _THIS_DIR.parent / "config" / "fossen.yaml"
+_THRUSTER_CONFIG  = _THIS_DIR.parent / "config" / "thrusters.yaml"
 
 ROBOT_START_Z  = -5.0   # [m] — pod wodą
 POSE_RATE_HZ   = 50.0
@@ -94,22 +108,29 @@ def add_water_plane(stage) -> None:
 
 
 def ensure_collision_api(stage, robot_prim_path: str) -> None:
-    """Fix collision: disable USD instancing, add RigidBodyAPI + box collision shape.
+    """Zapewnia geometrię kolizji na base_link.
 
-    Isaac Sim URDF importer in in-memory mode leaves collisions/ Xforms empty and
-    creates the robot as instanced USD (child prims are read-only proxies).
+    Isaac Sim 4.5 tworzy kolizje z URDF automatycznie (collisions/mesh_0/box).
+    Jeśli już istnieją — pomijamy, żeby nie unieważnić tensor view przez
+    usunięcie/podmianę primu zarządzanego przez PhysX.
+    Fallback (stary Isaac Sim / brak kolizji): de-instancing + własny box.
     """
-    # Must disable instancing before any authoring on child prims.
+    collisions_prim = stage.GetPrimAtPath(
+        f"{robot_prim_path}/bluerov2_base_link/collisions"
+    )
+    if collisions_prim.IsValid() and any(collisions_prim.GetChildren()):
+        print("[isaac_sim] Collision geometry found from URDF importer — skipping custom collider")
+        return
+
+    # Fallback: importer nie stworzył kolizji — de-instancing + box.
     for prim in Usd.PrimRange(stage.GetPrimAtPath(robot_prim_path)):
         if prim.IsInstanceable():
             prim.SetInstanceable(False)
 
-    # RigidBodyAPI on base_link — required for PhysX to bind collision shapes.
-    base_link = stage.GetPrimAtPath(f"{robot_prim_path}/bluerov2_base_link")
-    if base_link.IsValid() and not base_link.HasAPI(UsdPhysics.RigidBodyAPI):
-        UsdPhysics.RigidBodyAPI.Apply(base_link)
+    # NIE dodajemy RigidBodyAPI — link articulation jest już rigid body
+    # przez articulation solver. Dodanie RigidBodyAPI tworzy drugi aktor
+    # PhysX dla tego samego primu i blokuje apply_forces w tensor API.
 
-    # Create collision box (importer leaves collisions/ empty in in-memory mode).
     box_path = f"{robot_prim_path}/bluerov2_base_link/collisions/box"
     if not stage.GetPrimAtPath(box_path).IsValid():
         sx, sy, sz = 0.4576, 0.3442, 0.2552
@@ -120,6 +141,7 @@ def ensure_collision_api(stage, robot_prim_path: str) -> None:
         xf.AddScaleOp().Set(Gf.Vec3f(sx, sy, sz))
         UsdPhysics.CollisionAPI.Apply(box.GetPrim())
         UsdGeom.Imageable(box.GetPrim()).MakeInvisible()
+    print("[isaac_sim] Collision box created (URDF importer fallback)")
 
 
 def setup_lighting(stage) -> None:
@@ -129,23 +151,46 @@ def setup_lighting(stage) -> None:
 
 def set_robot_start_pose(robot_prim_path: str) -> None:
     """Ustawia startową pozycję robota pod wodą."""
+    import math
     xf = XFormPrim(robot_prim_path)
+    roll  = math.radians(20.0)
+    pitch = math.radians(20.0)
+    cr, sr = math.cos(roll / 2),  math.sin(roll / 2)
+    cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
+    # q_roll ⊗ q_pitch (Hamilton product, rotacja X potem Y)
     xf.set_world_pose(
         position=[0.0, 0.0, ROBOT_START_Z],
+        orientation=[cr*cp, sr*cp, cr*sp, sr*sp],  # [w, x, y, z]
     )
-    print(f"[isaac_sim] Robot startuje na z={ROBOT_START_Z} m")
+    print(f"[isaac_sim] Robot startuje na z={ROBOT_START_Z} m, roll=20°, pitch=20°")
 
 
 # ---------------------------------------------------------------------------
 class IsaacRosNode(Node):
-    def __init__(self):
+    def __init__(self, n_thrusters: int = 6):
         super().__init__("isaac_sim")
         self.declare_parameter("physics_dt",    0.01)
         self.declare_parameter("render_dt",     0.05)
         self.declare_parameter("robot_start_z", ROBOT_START_Z)
 
         self._pub_pose = self.create_publisher(PoseStamped, "/auv/pose", 10)
+
+        self._thrust_lock = threading.Lock()
+        self._thrust_cmds = np.zeros(n_thrusters, dtype=float)
+        self._sub_thrusts = self.create_subscription(
+            Float64MultiArray, "/auv/thruster_cmds", self._cb_thrusts, 10)
+
         self.get_logger().info("IsaacRosNode gotowy.")
+
+    def _cb_thrusts(self, msg: Float64MultiArray) -> None:
+        data = np.array(msg.data, dtype=float)
+        with self._thrust_lock:
+            n = min(len(data), len(self._thrust_cmds))
+            self._thrust_cmds[:n] = data[:n]
+
+    def get_thrusts(self) -> np.ndarray:
+        with self._thrust_lock:
+            return self._thrust_cmds.copy()
 
     def publish_pose(self, position, orientation, stamp) -> None:
         msg = PoseStamped()
@@ -164,10 +209,14 @@ class IsaacRosNode(Node):
 # ---------------------------------------------------------------------------
 def main():
     rclpy.init()
-    ros_node = IsaacRosNode()
 
+    # Wczytaj konfiguracje przed tworzeniem wezla (bez zależności od ROS)
     if not pathlib.Path(URDF_PATH).exists():
         raise FileNotFoundError(f"Brak {URDF_PATH} — uruchom przez sim_robot.sh, nie bezpośrednio")
+    with open(_THRUSTER_CONFIG) as f:
+        thruster_config = yaml.safe_load(f)
+
+    ros_node = IsaacRosNode(n_thrusters=thruster_config["thrusters"]["count"])
 
     physics_dt = ros_node.get_parameter("physics_dt").value
     render_dt  = ros_node.get_parameter("render_dt").value
@@ -185,9 +234,25 @@ def main():
 
     world.scene.add_default_ground_plane(z_position=-10.0)
     robot = world.scene.add(Articulation(prim_path=robot_prim_path))
+    # ArticulationView musi być dodany DO SCENY przed world.reset(),
+    # żeby Isaac Sim zarządzał jego tensor view podczas inicjalizacji fizyki.
+    art_view = world.scene.add(ArticulationView(
+        prim_paths_expr=robot_prim_path,
+        name="auv_view",
+    ))
     world.reset()
 
     set_robot_start_pose(robot_prim_path)
+
+    with open(_FOSSEN_CONFIG) as f:
+        fossen_config = yaml.safe_load(f)
+
+    fossen    = FossenPlugin(robot_prim_path, fossen_config)
+    thrusters = ThrusterPlugin(thruster_config)
+
+    fossen.initialize(robot, art_view)
+    world.add_physics_callback("fossen_hydrodynamics", fossen.step)
+    print(f"[isaac_sim] Fossen plugin zainicjalizowany ({_FOSSEN_CONFIG})")
 
     pose_dt      = 1.0 / POSE_RATE_HZ
     last_pose_t  = time.monotonic()
@@ -197,6 +262,12 @@ def main():
 
     while simulation_app.is_running():
         t0 = time.monotonic()
+
+        # Pobierz komendy silnikow z ROS i prześlij do symulatora
+        thrusters.set_thrusts(ros_node.get_thrusts())
+        f_thr, tau_thr = thrusters.compute_wrench()
+        fossen.set_thruster_wrench(f_thr, tau_thr)
+
         world.step(render=True)
         rclpy.spin_once(ros_node, timeout_sec=0.0)
 
