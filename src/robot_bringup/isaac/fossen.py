@@ -115,11 +115,6 @@ class FossenPlugin:
         # Sprawdź czy getter działa (weryfikacja poprawności widoku)
         print(f"[fossen] sim_view OK — zarejestruj step() jako physics callback")
 
-    def set_thruster_wrench(self, force: np.ndarray, torque: np.ndarray) -> None:
-        """Zapisuje wrench od silnikow (uklad ciala). Wywolaj przed world.step()."""
-        self._thr_force  = np.asarray(force,  dtype=float)
-        self._thr_torque = np.asarray(torque, dtype=float)
-
     # ------------------------------------------------------------------
 
     def _apply_wrench(self, force: np.ndarray, torque: np.ndarray) -> None:
@@ -240,8 +235,8 @@ class FossenPlugin:
         f_b   *= submerged
         tau_b *= submerged
 
-        f_body   = f_ca[:3] + f_d[:3] + f_b   + self._thr_force
-        tau_body = f_ca[3:] + f_d[3:] + tau_b + self._thr_torque
+        f_body   = f_ca[:3] + f_d[:3] + f_b
+        tau_body = f_ca[3:] + f_d[3:] + tau_b
 
         # 7. Transformacja do układu świata i aplikacja
         f_world   = R @ f_body
