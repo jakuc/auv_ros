@@ -1,0 +1,18 @@
+navi:
+  position_controller:
+    # Outer loop: błąd pozycji → setpoint prędkości ciała
+    # Uruchamiany na main computer, ~10 Hz
+
+    rate_hz: 10.0
+
+    setpoint:
+      x:   0.0     # [m]
+      y:   0.0     # [m]
+      z:  -5.0     # [m] — pod wodą
+      yaw: 0.0     # [rad]
+
+    gains:
+      x:   {kp: 0.5, max_vel: 0.5}   # [m/s]
+      y:   {kp: 0.5, max_vel: 0.5}
+      z:   {kp: 0.5, max_vel: 0.3}
+      yaw: {kp: 0.8, max_vel: 0.5}   # [rad/s]

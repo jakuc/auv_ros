@@ -7,6 +7,8 @@ VERBOSE=0
 [[ "$1" == "--verbose" || "$1" == "-v" ]] && VERBOSE=1
 
 cd "$WORKSPACE"
+# shellcheck disable=SC1091
+source "$WORKSPACE/install/setup.bash"
 
 # xacro → URDF (tu ROS2 jest w PATH, w przeciwieństwie do środowiska Isaac Sim)
 XACRO_PATH="$(ros2 pkg prefix bluerov2_description)/share/bluerov2_description/urdf/bluerov2.xacro"
@@ -34,7 +36,13 @@ echo "[sim_robot] Isaac Sim PID: $ISAAC_PID"
 sleep 5
 
 ros2 launch robot_bringup isaac.launch.py &
-LAUNCH_PID=$!
+BRINGUP_PID=$!
 
-trap "kill $ISAAC_PID $LAUNCH_PID 2>/dev/null" EXIT
+ros2 launch navi navi.launch.py &
+NAVI_PID=$!
+
+ros2 launch mezzo_navi mezzo_navi.launch.py &
+MEZZO_PID=$!
+
+trap "kill $ISAAC_PID $BRINGUP_PID $NAVI_PID $MEZZO_PID 2>/dev/null" EXIT
 wait $ISAAC_PID

@@ -34,6 +34,7 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     ros-humble-geometry-msgs \
     ros-humble-nav-msgs \
     ros-humble-xacro \
+    ros-humble-plotjuggler-ros \
     python3-colcon-common-extensions \
     python3-rosdep \
     python3-argcomplete \

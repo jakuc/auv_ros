@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>auv_drivers</name>
+  <version>0.1.0</version>
+  <description>
+    Sterowniki sprzętu AUV — granica hardware abstraction layer.
+    sim_thruster_driver: plugin Isaac Sim (fizyka PhysX).
+    esc_driver: prawdziwy sterownik ESC T200 (N → PWM → serial).
+  </description>
+  <maintainer email="kchmielewski707@gmail.com">jakub</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
