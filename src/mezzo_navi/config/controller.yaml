@@ -3,43 +3,50 @@ mezzo_navi:
     # Inner loop: błąd prędkości [m/s, rad/s] → wrench [N, N·m] w układzie ciała
     # Uruchamiany na companion computer (RT Linux), ~50 Hz
 
+    velocity_filter: 0.0   # [s] EMA na pomiarze prędkości — tłumi szum Isaaca
+
     x:
-      kp: 15.0
-      ki:  1.0
-      kd:  3.0
-      max_integral: 20.0
+      kp: 12
+      ki: 7
+      kd: 5
+      derivative_filter: 0.00   # [s] tau filtra D (~3 Hz cutoff)
+      max_integral: 10.0
       max_output:   30.0   # [N]
 
     y:
-      kp: 15.0
-      ki:  1.0
-      kd:  3.0
-      max_integral: 20.0
+      kp: 20
+      ki: 10
+      kd: 5
+      derivative_filter: 0.00
+      max_integral: 10.0
       max_output:   30.0
 
     z:
-      kp: 20.0
-      ki:  5.0
-      kd:  5.0
-      max_integral: 20.0
+      kp: 20
+      ki: 10
+      kd: 5
+      derivative_filter: 0.00
+      max_integral: 10.0
       max_output:   30.0
-      # Preset kompensujący nadmiarowy wypór od pierwszego kroku.
-      # preset_integral = -B_excess / ki = -(0.2 kg × 9.81 m/s²) / 5.0
-      preset_integral: -0.3924
+      # preset_integral = -B_excess / ki = -(0.2 kg × 9.81 m/s²) / 1.0
+      preset_integral: -1.962
 
     roll_damp:
-      kp: 3.0
-      kd: 1.0
+      kp: 7
+      kd: 2
+      derivative_filter: 0.00
       max_output: 10.0   # [N·m]
 
     pitch_damp:
-      kp: 3.0
-      kd: 1.0
+      kp: 7
+      kd: 2
+      derivative_filter: 0.00
       max_output: 10.0
 
     yaw:
-      kp:  5.0
-      ki:  0.5
-      kd:  2.0
-      max_integral: 10.0
+      kp:  7
+      ki:  3
+      kd:  2
+      derivative_filter: 0.00
+      max_integral: 5.0
       max_output:   20.0

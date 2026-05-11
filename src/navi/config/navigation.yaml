@@ -4,6 +4,7 @@ navi:
     # Uruchamiany na main computer, ~10 Hz
 
     rate_hz: 10.0
+    command_filter: 0.3   # [s] EMA na vel_setpoint — wygładza komendy do inner loop
 
     setpoint:
       x:   0.0     # [m]

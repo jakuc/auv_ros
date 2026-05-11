@@ -69,6 +69,8 @@ class FossenPlugin:
         self._g        = float(p["gravity"])
         self._mass     = float(p["mass"])
         self._water_z  = float(p.get("water_surface_z", 0.0))
+        self._enable_surface_check = bool(p.get("enable_surface_check", True))
+        self._enable_buoyancy      = bool(p.get("enable_buoyancy", True))
         self._draft_z      = float(p.get("draft_z", 0.25))
         self._keel_offset  = float(p.get("keel_from_origin", self._draft_z))
         excess         = float(p["buoyancy_excess_kg"])
@@ -214,13 +216,15 @@ class FossenPlugin:
         self._prev_quat = quat.copy()
 
         # Ułamek zanurzonej objętości: 0 = całkowicie nad wodą, 1 = całkowicie pod wodą
-        # z_keel = position[2] - keel_offset  (dno kadłuba w układzie świata)
-        submerged = float(np.clip(
-            (self._water_z - position[2] + self._keel_offset) / self._draft_z,
-            0.0, 1.0,
-        ))
-        if submerged == 0.0:
-            return
+        if self._enable_surface_check:
+            submerged = float(np.clip(
+                (self._water_z - position[2] + self._keel_offset) / self._draft_z,
+                0.0, 1.0,
+            ))
+            if submerged == 0.0:
+                return
+        else:
+            submerged = 1.0
 
         R  = _quat_to_rot(quat)
         Rt = R.T
@@ -231,9 +235,13 @@ class FossenPlugin:
         # 5. Składniki sił/momentów w układzie ciała (skalowane przez ułamek zanurzenia)
         f_ca        = self._coriolis_added_mass_force(v_body) * submerged
         f_d         = self._damping_force(v_body)             * submerged
-        f_b, tau_b  = self._buoyancy_force_and_torque(R)
-        f_b   *= submerged
-        tau_b *= submerged
+        if self._enable_buoyancy:
+            f_b, tau_b = self._buoyancy_force_and_torque(R)
+            f_b   *= submerged
+            tau_b *= submerged
+        else:
+            f_b   = np.zeros(3)
+            tau_b = np.zeros(3)
 
         f_body   = f_ca[:3] + f_d[:3] + f_b
         tau_body = f_ca[3:] + f_d[3:] + tau_b

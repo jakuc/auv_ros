@@ -22,6 +22,7 @@ setup(
     entry_points={
         "console_scripts": [
             "position_controller = navi.position_controller:main",
+            "local_planner = navi.local_planner:main",
         ],
     },
 )

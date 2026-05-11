@@ -11,7 +11,8 @@ Równolegle uruchom węzły ROS2:
     ros2 launch mezzo_navi mezzo_navi.launch.py
 
 Publikuje:
-    /auv/pose  (geometry_msgs/PoseStamped) – pozycja i orientacja robota, 50 Hz
+    /auv/pose      (geometry_msgs/PoseStamped)   – pozycja i orientacja robota, 50 Hz
+    /auv/velocity  (geometry_msgs/TwistStamped)  – prędkość w układzie ciała, 50 Hz
 
 Subskrybuje:
     /auv/thruster_cmds (std_msgs/Float64MultiArray) – komendy silników [N] z mezzo_navi
@@ -46,8 +47,20 @@ from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from std_msgs.msg import Float64MultiArray
+
+
+def _quat_to_rot(q) -> np.ndarray:
+    """Kwaternion [w, x, y, z] → macierz rotacji 3×3 (world←body)."""
+    q = np.asarray(q, dtype=float)
+    q /= np.linalg.norm(q)
+    w, x, y, z = q
+    return np.array([
+        [1 - 2*(y*y + z*z),   2*(x*y - w*z),   2*(x*z + w*y)],
+        [    2*(x*y + w*z), 1-2*(x*x + z*z),   2*(y*z - w*x)],
+        [    2*(x*z - w*y),   2*(y*z + w*x), 1-2*(x*x + y*y)],
+    ])
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from fossen import FossenPlugin
@@ -188,6 +201,7 @@ class IsaacRosNode(Node):
         self.declare_parameter("robot_start_z", ROBOT_START_Z)
 
         self._pub_pose    = self.create_publisher(PoseStamped, "/auv/pose", 10)
+        self._pub_vel     = self.create_publisher(TwistStamped, "/auv/velocity", 10)
         self._sim_driver  = None   # ustawiany przez set_thruster_driver()
 
         self._sub_thrusts = self.create_subscription(
@@ -202,6 +216,21 @@ class IsaacRosNode(Node):
     def _cb_thrusts(self, msg: Float64MultiArray) -> None:
         if self._sim_driver is not None:
             self._sim_driver.set_thrusts(np.array(msg.data, dtype=float))
+
+    def publish_velocity(self, lin_vel_world, ang_vel_world, orientation, stamp) -> None:
+        R = _quat_to_rot(orientation)
+        lin_body = R.T @ np.asarray(lin_vel_world, dtype=float)
+        ang_body = R.T @ np.asarray(ang_vel_world, dtype=float)
+        msg = TwistStamped()
+        msg.header.stamp    = stamp.to_msg()
+        msg.header.frame_id = "base_link"
+        msg.twist.linear.x  = float(lin_body[0])
+        msg.twist.linear.y  = float(lin_body[1])
+        msg.twist.linear.z  = float(lin_body[2])
+        msg.twist.angular.x = float(ang_body[0])
+        msg.twist.angular.y = float(ang_body[1])
+        msg.twist.angular.z = float(ang_body[2])
+        self._pub_vel.publish(msg)
 
     def publish_pose(self, position, orientation, stamp) -> None:
         msg = PoseStamped()
@@ -248,7 +277,7 @@ def main():
     add_water_plane(stage)
     ensure_collision_api(stage, robot_prim_path)
 
-    world.scene.add_default_ground_plane(z_position=-10.0)
+    world.scene.add_default_ground_plane(z_position=-100.0)
     robot = world.scene.add(Articulation(prim_path=robot_prim_path))
     # ArticulationView musi być dodany DO SCENY przed world.reset(),
     # żeby Isaac Sim zarządzał jego tensor view podczas inicjalizacji fizyki.
@@ -289,7 +318,14 @@ def main():
         if now - last_pose_t >= pose_dt:
             last_pose_t = now
             position, orientation = robot.get_world_pose()
-            ros_node.publish_pose(position, orientation, ros_node.get_clock().now())
+            stamp = ros_node.get_clock().now()
+            ros_node.publish_pose(position, orientation, stamp)
+            ros_node.publish_velocity(
+                robot.get_linear_velocity(),
+                robot.get_angular_velocity(),
+                orientation,
+                stamp,
+            )
 
         elapsed = time.monotonic() - t0
         if elapsed < step_dt:
