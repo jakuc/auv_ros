@@ -1,4 +1,6 @@
 from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -7,6 +9,12 @@ import os
 def generate_launch_description():
     nav_cfg = os.path.join(
         get_package_share_directory("navi"), "config", "navigation.yaml")
+
+    perception = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory("mezzo_navi"),
+            "launch", "mezzo_navi.launch.py"))
+    )
 
     position_controller = Node(
         package="navi",
@@ -49,6 +57,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        perception,
         position_controller,
         local_planner,
         global_planner,

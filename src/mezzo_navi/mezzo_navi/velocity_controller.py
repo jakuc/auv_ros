@@ -50,10 +50,7 @@ class PID:
 
     def step(self, error: float, dt: float) -> float:
         dt = max(dt, 1e-6)
-        self._integral += error * dt
-        if self.max_integral is not None:
-            self._integral = float(np.clip(self._integral,
-                                           -self.max_integral, self.max_integral))
+
         derivative = 0.0
         if self._prev_error is not None:
             raw = (error - self._prev_error) / dt
@@ -64,7 +61,22 @@ class PID:
             else:
                 derivative = raw
         self._prev_error = error
-        output = self.kp * error + self.ki * self._integral + self.kd * derivative
+
+        # Anti-windup: całkuj tylko gdy output nie jest saturowany
+        # lub gdy błąd redukuje saturację (przeciwny znak)
+        output_no_i = self.kp * error + self.kd * derivative
+        tentative = output_no_i + self.ki * (self._integral + error * dt)
+        saturated = (
+            self.max_output is not None and abs(tentative) > self.max_output
+        )
+        winding_up = saturated and (tentative * error > 0)
+        if not winding_up:
+            self._integral += error * dt
+            if self.max_integral is not None:
+                self._integral = float(np.clip(self._integral,
+                                               -self.max_integral, self.max_integral))
+
+        output = output_no_i + self.ki * self._integral
         if self.max_output is not None:
             output = float(np.clip(output, -self.max_output, self.max_output))
         return output

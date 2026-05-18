@@ -12,7 +12,7 @@ fossen:
 
   # Offset środka wyporu (CoB) względem CoG w układzie ciała [m]
   # Konwencja: X-przód, Y-lewo, Z-góra (zgodnie z Isaac Sim)
-  cob_offset: [0.0, 0.0, 0.02]
+  cob_offset: [0.0, 0.0, 0.14]
 
   # Dodana masa (przekątna M_A) — model BlueROV2 heavy, Wu 2018
   # Kolejność: [X_du, Y_dv, Z_dw, K_dp, M_dq, N_dr]

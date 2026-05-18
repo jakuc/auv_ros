@@ -1,0 +1,67 @@
+ekf_node:
+  ros__parameters:
+    frequency: 50.0
+    sensor_timeout: 0.1
+    two_d_mode: false
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+    print_diagnostics: false
+
+    odom_frame: odom
+    base_link_frame: bluerov2/base_link
+    world_frame: odom
+
+    publish_tf: false        # TF zarządza robot_state_publisher z URDF
+    publish_acceleration: false
+
+    # --- AHRS (sensor_msgs/Imu) ---
+    # Dostarcza absolutną orientację (roll, pitch, yaw) i prędkości kątowe.
+    # Yaw z magnetometru — szum adaptacyjny w sim_sensor_drivers.
+    imu0: /auv/ahrs
+    imu0_config: [false, false, false,   # x, y, z (brak info o pozycji)
+                  true,  true,  true,    # roll, pitch, yaw (abs. orientacja)
+                  false, false, false,   # vx, vy, vz
+                  true,  true,  true,    # vroll, vpitch, vyaw
+                  false, false, false]   # ax, ay, az
+    imu0_differential: false
+    imu0_relative: false
+    imu0_remove_gravitational_acceleration: true
+    imu0_queue_size: 10
+
+    # --- DVL (geometry_msgs/TwistWithCovarianceStamped) ---
+    # Prędkość w układzie ciała. Integracja → XY (z dryfem), korekcja yaw z kinematyki.
+    twist0: /auv/dvl
+    twist0_config: [false, false, false,
+                    false, false, false,
+                    true,  true,  true,   # vx, vy, vz (body frame)
+                    false, false, false,
+                    false, false, false]
+    twist0_queue_size: 10
+
+    # --- Depth (geometry_msgs/PoseWithCovarianceStamped, tylko Z) ---
+    # Absolutna głębokość — zeruje dryf Z.
+    pose0: /auv/depth_pose
+    pose0_config: [false, false, true,   # z
+                   false, false, false,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false]
+    pose0_queue_size: 10
+    pose0_differential: false
+
+    # Kowariancja procesu — jak szybko rośnie niepewność przy braku pomiarów
+    process_noise_covariance: [0.05,   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.05,   0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.06,   0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.03,   0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.03,   0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.06,   0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.025,   0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.025,   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.04,   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.01,   0.0,    0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.01,   0.0,    0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.02,   0.0,    0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.01,   0.0,    0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.01,   0.0,
+                               0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.015]

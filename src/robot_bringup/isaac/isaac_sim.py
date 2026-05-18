@@ -175,17 +175,12 @@ def setup_lighting(stage) -> None:
 
 def set_robot_start_pose(robot_prim_path: str) -> None:
     """Ustawia startową pozycję robota pod wodą."""
-    import math
     xf = XFormPrim(robot_prim_path)
-    roll  = math.radians(20.0)
-    pitch = math.radians(20.0)
-    cr, sr = math.cos(roll / 2),  math.sin(roll / 2)
-    cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
     xf.set_world_pose(
         position=[0.0, 0.0, ROBOT_START_Z],
-        orientation=[cr*cp, sr*cp, cr*sp, sr*sp],  # [w, x, y, z]
+        orientation=[1.0, 0.0, 0.0, 0.0],  # [w, x, y, z] — poziomo
     )
-    print(f"[isaac_sim] Robot startuje na z={ROBOT_START_Z} m, roll=20°, pitch=20°")
+    print(f"[isaac_sim] Robot startuje na z={ROBOT_START_Z} m, orientacja pozioma")
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +196,7 @@ class IsaacRosNode(Node):
         self.declare_parameter("physics_dt",    0.01)
         self.declare_parameter("render_dt",     0.05)
         self.declare_parameter("robot_start_z", ROBOT_START_Z)
+        self.declare_parameter("start_paused",  True)
 
         self._pub_pose    = self.create_publisher(PoseStamped, "/auv/pose", 10)
         self._pub_vel     = self.create_publisher(TwistStamped, "/auv/velocity", 10)
@@ -312,7 +308,14 @@ def main():
 
     print(f"[isaac_sim] Fossen: {_FOSSEN_CONFIG}")
     print(f"[isaac_sim] SimThrusterDriver: {_THRUSTER_CONFIG}")
-    print("[isaac_sim] Pętla symulacji uruchomiona.")
+
+    paused = ros_node.get_parameter("start_paused").value
+    if paused:
+        # world.reset() startuje timeline automatycznie — jawnie zatrzymujemy
+        world.pause()
+        print("[isaac_sim] Symulacja ZATRZYMANA (start_paused=true). Spacja w oknie Isaac → odpal.")
+    else:
+        print("[isaac_sim] Pętla symulacji uruchomiona.")
 
     pose_dt     = 1.0 / POSE_RATE_HZ
     ahrs_dt     = 1.0 / float(sensor_config["ahrs"]["rate_hz"])
@@ -327,6 +330,28 @@ def main():
 
     while simulation_app.is_running():
         t0 = time.monotonic()
+
+        if paused:
+            # Renderuj GUI bez kroku fizyki — robot stoi w miejscu.
+            # Publikuj zerową prędkość żeby velocity_controller nie nakręcał
+            # integrala na starym pomiarze z momentu inicjalizacji.
+            world.render()
+            rclpy.spin_once(ros_node, timeout_sec=0.0)
+            position, orientation = robot.get_world_pose()
+            stamp = ros_node.get_clock().now()
+            ros_node.publish_pose(position, orientation, stamp)
+            ros_node.publish_velocity(
+                [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], orientation, stamp)
+            if world.is_playing():
+                paused = False
+                print("[isaac_sim] Symulacja uruchomiona.")
+                # Resetuj timery żeby uniknąć spikea z nagromadzonego dt
+                last_pose_t = last_ahrs_t = last_dvl_t = last_depth_t = time.monotonic()
+            elapsed = time.monotonic() - t0
+            if elapsed < step_dt:
+                time.sleep(step_dt - elapsed)
+            continue
+
         world.step(render=True)
         rclpy.spin_once(ros_node, timeout_sec=0.0)
 

@@ -3,9 +3,7 @@
   <name>mezzo_navi</name>
   <version>0.1.0</version>
   <description>
-    AUV companion computer stack — inner PID loop i alokator silników.
-    Odpowiada za poziom RT Linux na companion computer.
-    Odbiera vel_setpoint z navi, publikuje thruster_cmds do driverów silników.
+    AUV navigation stack na companion computer — estymacja stanu (EKF), inner PID loop i alokator silników.
   </description>
   <maintainer email="kchmielewski707@gmail.com">jakub</maintainer>
   <license>Apache-2.0</license>
@@ -13,6 +11,9 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>ament_index_python</exec_depend>

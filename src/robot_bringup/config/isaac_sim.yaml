@@ -11,3 +11,6 @@ isaac_sim:
     robot_start_x: 0.0
     robot_start_y: 0.0
     robot_start_z: -5.0     # [m] pod wodą
+
+    # Debug
+    start_paused: true      # true → symulacja zatrzymana przy starcie, Space żeby odpalić

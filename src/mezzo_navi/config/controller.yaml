@@ -28,10 +28,10 @@ mezzo_navi:
       derivative_filter: 0.00
       max_integral: 10.0
       max_output:   30.0
-      # preset_integral: startowa wartość całki kompensująca pływalność (F_buoy / ki).
-      # Mierzono ok. 13-15 N stałej siły downward w symulacji; ki=10 → preset ≈ -1.3.
+      # preset_integral = -(buoyancy_excess_kg * g) / ki
+      #                 = -(0.200 * 9.81) / 10 = -0.196
       # Zmienialny w locie: ros2 param set /velocity_controller z.preset_integral <val>
-      preset_integral: -1.962
+      preset_integral: -0.196
 
     roll_damp:
       kp: 0

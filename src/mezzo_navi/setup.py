@@ -21,8 +21,9 @@ setup(
     zip_safe=True,
     entry_points={
         "console_scripts": [
-            "velocity_controller = mezzo_navi.velocity_controller:main",
-            "thruster_allocator  = mezzo_navi.thruster_allocator:main",
+            "velocity_controller  = mezzo_navi.velocity_controller:main",
+            "thruster_allocator   = mezzo_navi.thruster_allocator:main",
+            "depth_pose_converter = mezzo_navi.depth_pose_converter:main",
         ],
     },
 )
