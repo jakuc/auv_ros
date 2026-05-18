@@ -1,0 +1,20 @@
+sensors:
+  ahrs:
+    rate_hz: 50.0                    # [Hz] w symulacji; MTi-600 na HW do 400 Hz
+    roll_pitch_noise_stddev: 0.003   # [rad] ~0.2° — spec MTi-600
+    yaw_noise_base_stddev:   0.008   # [rad] ~0.5° — silniki wyłączone
+    yaw_noise_max_stddev:    0.17    # [rad] ~10°  — silniki pełna moc
+    gyro_noise_stddev:       0.003   # [rad/s]
+    accel_noise_stddev:      0.05    # [m/s²]
+    gravity:                 9.81    # [m/s²]
+    thruster_max_force:     30.0     # [N] T200 @ 16V
+
+  dvl:
+    rate_hz: 10.0
+    vel_noise_stddev: 0.02           # [m/s] per osi
+
+  depth:
+    rate_hz: 25.0
+    fluid_density:        1025.0     # [kg/m³] woda morska
+    pressure_noise_stddev:  50.0     # [Pa] ≈ 5 mm głębokości
+    atm_pressure:       101325.0     # [Pa]

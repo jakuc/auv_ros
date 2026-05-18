@@ -46,4 +46,32 @@
 
   <xacro:include filename="thrusters.xacro"/>
 
+  <!-- Sensor frames — czyste ramki TF, bez pluginów symulacyjnych.
+       Szum i model sensoryczny w sim_sensor_drivers.py (robot_bringup).
+       Na HW te pozycje wyznaczają lever arm dla EKF. -->
+
+  <!-- AHRS (MTi-600): wewnątrz rury elektronicznej, środek-góra kadłuba -->
+  <link name="${ns}/ahrs_link"/>
+  <joint name="${ns}/ahrs_joint" type="fixed">
+    <parent link="${ns}/base_link"/>
+    <child  link="${ns}/ahrs_link"/>
+    <origin xyz="0.0 0.0 0.06" rpy="0 0 0"/>
+  </joint>
+
+  <!-- DVL: spód kadłuba, lekko z tyłu; Z obrócone o PI — wskazuje w dół (w stronę dna) -->
+  <link name="${ns}/dvl_link"/>
+  <joint name="${ns}/dvl_joint" type="fixed">
+    <parent link="${ns}/base_link"/>
+    <child  link="${ns}/dvl_link"/>
+    <origin xyz="-0.05 0.0 -0.12" rpy="${pi} 0 0"/>
+  </joint>
+
+  <!-- Depth (Bar30): bok ramy, wystawiony na wodę -->
+  <link name="${ns}/depth_link"/>
+  <joint name="${ns}/depth_joint" type="fixed">
+    <parent link="${ns}/base_link"/>
+    <child  link="${ns}/depth_link"/>
+    <origin xyz="0.0 0.15 0.0" rpy="0 0 0"/>
+  </joint>
+
 </robot>

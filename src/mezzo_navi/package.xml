@@ -5,7 +5,7 @@
   <description>
     AUV companion computer stack — inner PID loop i alokator silników.
     Odpowiada za poziom RT Linux na companion computer.
-    Odbiera vel_setpoint z navi, publikuje thruster_cmds do auv_drivers.
+    Odbiera vel_setpoint z navi, publikuje thruster_cmds do driverów silników.
   </description>
   <maintainer email="kchmielewski707@gmail.com">jakub</maintainer>
   <license>Apache-2.0</license>

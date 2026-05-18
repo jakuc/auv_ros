@@ -65,7 +65,8 @@ def _quat_to_rot(q) -> np.ndarray:
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from fossen import FossenPlugin
 
-from auv_drivers.sim_thruster_driver import SimThrusterDriver
+from sim_thruster_driver import SimThrusterDriver
+from sim_sensor_drivers import SimAhrsDriver, SimDvlDriver, SimDepthDriver
 
 # ---------------------------------------------------------------------------
 URDF_PATH = "/tmp/bluerov2.urdf"  # generowany przez sim_robot.sh przed startem
@@ -73,6 +74,7 @@ URDF_PATH = "/tmp/bluerov2.urdf"  # generowany przez sim_robot.sh przed startem
 _THIS_DIR        = pathlib.Path(__file__).parent
 _FOSSEN_CONFIG   = _THIS_DIR.parent / "config" / "fossen.yaml"
 _THRUSTER_CONFIG = _THIS_DIR.parent / "config" / "thrusters.yaml"
+_SENSOR_CONFIG   = _THIS_DIR.parent / "config" / "sensors.yaml"
 
 ROBOT_START_Z  = -5.0   # [m] — pod wodą
 POSE_RATE_HZ   = 50.0
@@ -263,6 +265,13 @@ def main():
     ros_node = IsaacRosNode()
     ros_node.set_thruster_driver(sim_driver)
 
+    with open(_SENSOR_CONFIG) as f:
+        sensor_config = yaml.safe_load(f)["sensors"]
+
+    sim_ahrs  = SimAhrsDriver(ros_node, sensor_config["ahrs"])
+    sim_dvl   = SimDvlDriver(ros_node,  sensor_config["dvl"])
+    sim_depth = SimDepthDriver(ros_node, sensor_config["depth"])
+
     physics_dt = ros_node.get_parameter("physics_dt").value
     render_dt  = ros_node.get_parameter("render_dt").value
 
@@ -306,8 +315,15 @@ def main():
     print("[isaac_sim] Pętla symulacji uruchomiona.")
 
     pose_dt     = 1.0 / POSE_RATE_HZ
-    last_pose_t = time.monotonic()
-    step_dt     = 1.0 / 60.0
+    ahrs_dt     = 1.0 / float(sensor_config["ahrs"]["rate_hz"])
+    dvl_dt      = 1.0 / float(sensor_config["dvl"]["rate_hz"])
+    depth_dt    = 1.0 / float(sensor_config["depth"]["rate_hz"])
+
+    last_pose_t  = time.monotonic()
+    last_ahrs_t  = time.monotonic()
+    last_dvl_t   = time.monotonic()
+    last_depth_t = time.monotonic()
+    step_dt      = 1.0 / 60.0
 
     while simulation_app.is_running():
         t0 = time.monotonic()
@@ -326,6 +342,18 @@ def main():
                 orientation,
                 stamp,
             )
+
+        if now - last_ahrs_t >= ahrs_dt:
+            last_ahrs_t = now
+            sim_ahrs.publish(robot, thruster_forces=sim_driver._thrusts)
+
+        if now - last_dvl_t >= dvl_dt:
+            last_dvl_t = now
+            sim_dvl.publish(robot)
+
+        if now - last_depth_t >= depth_dt:
+            last_depth_t = now
+            sim_depth.publish(robot)
 
         elapsed = time.monotonic() - t0
         if elapsed < step_dt:
