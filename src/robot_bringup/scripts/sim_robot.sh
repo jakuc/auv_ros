@@ -41,8 +41,5 @@ BRINGUP_PID=$!
 ros2 launch navi navi.launch.py &
 NAVI_PID=$!
 
-ros2 launch mezzo_navi mezzo_navi.launch.py &
-MEZZO_PID=$!
-
-trap "kill $ISAAC_PID $BRINGUP_PID $NAVI_PID $MEZZO_PID 2>/dev/null" EXIT
+trap "kill $ISAAC_PID $BRINGUP_PID $NAVI_PID 2>/dev/null" EXIT
 wait $ISAAC_PID

@@ -40,7 +40,7 @@ class DepthPoseConverter(Node):
 
         out = PoseWithCovarianceStamped()
         out.header = msg.header
-        out.header.frame_id = "world"
+        out.header.frame_id = "odom"
         out.pose.pose.position.z = z
         out.pose.pose.orientation.w = 1.0
 
