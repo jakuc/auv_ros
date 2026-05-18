@@ -23,4 +23,35 @@ def generate_launch_description():
         output="screen",
     )
 
-    return LaunchDescription([position_controller, local_planner])
+    global_planner = Node(
+        package="navi",
+        executable="global_planner",
+        name="global_planner",
+        output="screen",
+    )
+
+    visualizer = Node(
+        package="navi",
+        executable="visualizer",
+        name="visualizer",
+        output="screen",
+    )
+
+    rviz_cfg = os.path.join(
+        get_package_share_directory("navi"), "config", "nav.rviz")
+
+    rviz = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        arguments=["-d", rviz_cfg],
+        output="screen",
+    )
+
+    return LaunchDescription([
+        position_controller,
+        local_planner,
+        global_planner,
+        visualizer,
+        rviz,
+    ])

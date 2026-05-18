@@ -8,6 +8,7 @@ Tryby:
 
   sub:  /auv/pose            (geometry_msgs/PoseStamped)
   pub:  /auv/setpoint        (geometry_msgs/PoseStamped)
+  pub:  /auv/planned_path    (nav_msgs/Path)
   srv:  /auv/add_waypoint    (auv_msgs/AddWaypoint)
   srv:  /auv/clear_waypoints (auv_msgs/ClearWaypoints)
 """
@@ -19,6 +20,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path
 from auv_msgs.srv import AddWaypoint, ClearWaypoints
 
 
@@ -62,9 +64,12 @@ class LocalPlannerNode(Node):
 
         self._pose: PoseStamped | None = None
 
-        self._pub = self.create_publisher(PoseStamped, "/auv/setpoint", 10)
+        self._pub      = self.create_publisher(PoseStamped, "/auv/setpoint",     10)
+        self._pub_path = self.create_publisher(Path,        "/auv/planned_path", 10)
         self._sub = self.create_subscription(
             PoseStamped, "/auv/pose", self._cb_pose, 10)
+        self.create_subscription(
+            Path, "/auv/global_path", self._cb_global_path, 10)
 
         self.create_service(AddWaypoint,    "/auv/add_waypoint",    self._srv_add)
         self.create_service(ClearWaypoints, "/auv/clear_waypoints", self._srv_clear)
@@ -78,6 +83,8 @@ class LocalPlannerNode(Node):
         self._queue.append((req.pose, req.mode))
         if self._current_wp is None:
             self._advance()
+        else:
+            self._publish_planned_path()
         res.success = True
         res.message = f"Dodano WP #{len(self._queue) + (1 if self._current_wp else 0)}, tryb={'CRUISE' if req.mode == 0 else 'WORKING'}"
         self.get_logger().info(res.message)
@@ -86,12 +93,30 @@ class LocalPlannerNode(Node):
     def _srv_clear(self, req: ClearWaypoints.Request, res: ClearWaypoints.Response):
         self._queue.clear()
         self._current_wp = None
+        self._publish_planned_path()
         res.success = True
         res.message = "Kolejka wyczyszczona."
         self.get_logger().info(res.message)
         return res
 
+    def _cb_global_path(self, msg: Path) -> None:
+        self._queue.clear()
+        self._current_wp = None
+        for wp in msg.poses:
+            self._queue.append((wp, AddWaypoint.Request.CRUISE))
+        self._advance()
+        self.get_logger().info(f"Nowa trasa z global_plannera: {len(msg.poses)} WP.")
+
     # ------------------------------------------------------------------
+
+    def _publish_planned_path(self) -> None:
+        path = Path()
+        path.header.stamp = self.get_clock().now().to_msg()
+        path.header.frame_id = "world"
+        if self._current_wp is not None:
+            path.poses.append(self._current_wp)
+        path.poses.extend(wp for wp, _ in self._queue)
+        self._pub_path.publish(path)
 
     def _advance(self):
         if self._queue:
@@ -104,6 +129,7 @@ class LocalPlannerNode(Node):
             )
         else:
             self.get_logger().info("Kolejka pusta — trzymam ostatni setpoint.")
+        self._publish_planned_path()
 
     def _cb_pose(self, msg: PoseStamped):
         self._pose = msg

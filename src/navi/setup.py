@@ -15,7 +15,7 @@ setup(
         (os.path.join("share", package_name, "launch"),
             glob("launch/*.launch.py")),
         (os.path.join("share", package_name, "config"),
-            glob("config/*.yaml")),
+            glob("config/*.yaml") + glob("config/*.rviz")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -23,6 +23,8 @@ setup(
         "console_scripts": [
             "position_controller = navi.position_controller:main",
             "local_planner = navi.local_planner:main",
+            "global_planner = navi.global_planner:main",
+            "visualizer = navi.visualizer:main",
         ],
     },
 )

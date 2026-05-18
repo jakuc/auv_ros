@@ -21,7 +21,7 @@ import yaml
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped, Twist
+from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from rcl_interfaces.msg import SetParametersResult
 
 
@@ -68,8 +68,9 @@ class PositionControllerNode(Node):
         self._sp_yaw = float(sp["yaw"])
 
         gains = cfg["gains"]
-        self._kp     = {ax: float(gains[ax]["kp"])      for ax in ("x", "y", "z", "yaw")}
-        self._max_vel = {ax: float(gains[ax]["max_vel"]) for ax in ("x", "y", "z", "yaw")}
+        self._kp     = {ax: float(gains[ax]["kp"])           for ax in ("x", "y", "z", "yaw")}
+        self._kd     = {ax: float(gains[ax].get("kd", 0.0))  for ax in ("x", "y", "z", "yaw")}
+        self._max_vel = {ax: float(gains[ax]["max_vel"])      for ax in ("x", "y", "z", "yaw")}
 
         rate_hz = float(cfg.get("rate_hz", 10.0))
 
@@ -80,11 +81,13 @@ class PositionControllerNode(Node):
 
         self._latest_pos  = None
         self._latest_quat = None
+        self._latest_vel: np.ndarray | None = None
         self._vel_override: np.ndarray | None = None
         self._override_time: float = 0.0
 
         for ax in ("x", "y", "z", "yaw"):
             self.declare_parameter(f"{ax}.kp",      self._kp[ax])
+            self.declare_parameter(f"{ax}.kd",      self._kd[ax])
             self.declare_parameter(f"{ax}.max_vel", self._max_vel[ax])
         self.add_on_set_parameters_callback(self._on_param_change)
 
@@ -92,6 +95,8 @@ class PositionControllerNode(Node):
             PoseStamped, "/auv/pose", self._cb_pose, 10)
         self._sub_sp = self.create_subscription(
             PoseStamped, "/auv/setpoint", self._cb_setpoint, 10)
+        self._sub_vel = self.create_subscription(
+            TwistStamped, "/auv/velocity", self._cb_vel, 10)
         self._sub_override = self.create_subscription(
             Twist, "/auv/vel_override", self._cb_vel_override, 10)
         self._pub = self.create_publisher(Twist, "/auv/vel_setpoint", 10)
@@ -112,10 +117,16 @@ class PositionControllerNode(Node):
             val = float(p.value)
             if field == "kp":
                 self._kp[ax] = val
+            elif field == "kd":
+                self._kd[ax] = val
             elif field == "max_vel":
                 self._max_vel[ax] = val
             self.get_logger().info(f"Position param {p.name} → {val}")
         return SetParametersResult(successful=True)
+
+    def _cb_vel(self, msg: TwistStamped) -> None:
+        self._latest_vel = np.array([
+            msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z, msg.twist.angular.z])
 
     def _cb_vel_override(self, msg: Twist) -> None:
         self._vel_override = np.array([
@@ -167,6 +178,17 @@ class PositionControllerNode(Node):
 
             R = _quat_to_rot(quat)
             v_hor_body = R.T @ np.array([v_hor_w[0], v_hor_w[1], 0.0])
+
+            # D: antycypacyjne hamowanie — redukuje vel_sp proporcjonalnie do prędkości
+            vel = self._latest_vel if self._latest_vel is not None else np.zeros(4)
+            v_hor_body[0] -= self._kd["x"] * vel[0]
+            v_hor_body[1] -= self._kd["y"] * vel[1]
+            speed_body = np.linalg.norm(v_hor_body[:2])
+            if speed_body > max_hor:
+                v_hor_body[:2] *= max_hor / speed_body
+
+            vz   = float(np.clip(vz   - self._kd["z"]   * vel[2], -self._max_vel["z"],   self._max_vel["z"]))
+            wyaw = float(np.clip(wyaw - self._kd["yaw"] * vel[3], -self._max_vel["yaw"], self._max_vel["yaw"]))
 
             raw = np.array([v_hor_body[0], v_hor_body[1], vz, wyaw])
         else:

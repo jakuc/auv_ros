@@ -160,7 +160,7 @@ class VelocityControllerNode(Node):
     _AXES = {
         "x":          ("vx",    ["kp", "ki", "kd", "max_integral", "max_output"]),
         "y":          ("vy",    ["kp", "ki", "kd", "max_integral", "max_output"]),
-        "z":          ("vz",    ["kp", "ki", "kd", "max_integral", "max_output"]),
+        "z":          ("vz",    ["kp", "ki", "kd", "max_integral", "max_output", "preset_integral"]),
         "yaw":        ("yaw",   ["kp", "ki", "kd", "max_integral", "max_output"]),
         "roll_damp":  ("roll",  ["kp", "kd", "max_output"]),
         "pitch_damp": ("pitch", ["kp", "kd", "max_output"]),
@@ -183,11 +183,12 @@ class VelocityControllerNode(Node):
                 continue
             pid = self._pid[pid_map[cfg_key]]
             val = float(p.value)
-            if   field == "kp":           pid.kp           = val
-            elif field == "ki":           pid.ki           = val
-            elif field == "kd":           pid.kd           = val
-            elif field == "max_integral": pid.max_integral = val
-            elif field == "max_output":   pid.max_output   = val
+            if   field == "kp":             pid.kp           = val
+            elif field == "ki":             pid.ki           = val
+            elif field == "kd":             pid.kd           = val
+            elif field == "max_integral":   pid.max_integral = val
+            elif field == "max_output":     pid.max_output   = val
+            elif field == "preset_integral": pid.reset(preset_integral=val)
             self.get_logger().info(f"PID param {p.name} → {val}")
         return SetParametersResult(successful=True)
 
