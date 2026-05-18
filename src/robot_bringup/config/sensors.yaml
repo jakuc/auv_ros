@@ -1,20 +1,56 @@
 sensors:
+  # ---------------------------------------------------------------------------
+  # AHRS: Xsens MTi-630 (z serii MTi-600)
+  # Datasheet: https://www.xsens.com/products/mti-600-series
+  # ---------------------------------------------------------------------------
   ahrs:
-    rate_hz: 50.0                    # [Hz] w symulacji; MTi-600 na HW do 400 Hz
-    roll_pitch_noise_stddev: 0.003   # [rad] ~0.2° — spec MTi-600
-    yaw_noise_base_stddev:   0.008   # [rad] ~0.5° — silniki wyłączone
-    yaw_noise_max_stddev:    0.17    # [rad] ~10°  — silniki pełna moc
-    gyro_noise_stddev:       0.003   # [rad/s]
-    accel_noise_stddev:      0.05    # [m/s²]
+    rate_hz: 50.0                    # [Hz] MTi-600 obsługuje do 400 Hz
+    enable_drift: true               # false → tylko szum biały, bez biasu i random walk
+
+    # Orientacja (filtr Kalmana wbudowany w MTi)
+    roll_pitch_noise_stddev: 0.003   # [rad] 0.2° RMS — spec MTi-630
+    yaw_noise_base_stddev:   0.017   # [rad] 1.0° RMS — mag. bez zakłóceń
+    yaw_noise_max_stddev:    0.17    # [rad] ~10° — silniki pełna moc (zakłócenia mag.)
+
+    # Żyroskop (surowy pomiar)
+    gyro_noise_stddev:       0.0002  # [rad/s] z ARW=0.1°/√h przy 50 Hz
+    gyro_bias_initial_std:   0.00005 # [rad/s] bias in-run 10°/h
+    gyro_bias_walk_std:      0.000001 # [rad/s/√s] rate random walk
+
+    # Dryf yaw (residual po korekcji magnetometrem)
+    yaw_drift_walk_std:      0.00003  # [rad/√s] odpowiada ARW żyroskopu
+
+    # Akcelerometr
+    accel_noise_stddev:      0.001   # [m/s²] ~100 μg/√Hz przy 50 Hz
     gravity:                 9.81    # [m/s²]
     thruster_max_force:     30.0     # [N] T200 @ 16V
 
+  # ---------------------------------------------------------------------------
+  # DVL: Teledyne Marine Wayfinder DVL
+  # Datasheet: wayfinder_brochure.pdf
+  # Spec: long term accuracy ±1.15%, velocity std dev 1.2 cm/s, ping rate 16 Hz
+  # Max altitude 60 m, min altitude 0.5 m, max depth 300 m
+  # ---------------------------------------------------------------------------
   dvl:
-    rate_hz: 10.0
-    vel_noise_stddev: 0.02           # [m/s] per osi
+    rate_hz: 16.0                    # [Hz] ping rate wg datasheet
+    enable_drift: true               # false → tylko szum biały, bez biasu i random walk
 
+    vel_noise_stddev:       0.012    # [m/s] 1.2 cm/s velocity standard deviation
+    vel_scale_error_std:    0.01155  # [-]   ±1.15% long term accuracy (błąd skali)
+    vel_bias_initial_std:   0.005    # [m/s] bias kalibracyjny przy starcie
+    vel_bias_walk_std:      0.0002   # [m/s/√s] dryf temperatury wody
+
+  # ---------------------------------------------------------------------------
+  # Depth: Blue Robotics Bar30
+  # Datasheet: https://bluerobotics.com/store/sensors-sonars-cameras/sensors/bar30-sensor-r1/
+  # Rozdzielczość: 0.2 mbar = 20 Pa ≈ 2 mm; dokładność absolutna: ±200 mbar (temp.)
+  # ---------------------------------------------------------------------------
   depth:
     rate_hz: 25.0
-    fluid_density:        1025.0     # [kg/m³] woda morska
-    pressure_noise_stddev:  50.0     # [Pa] ≈ 5 mm głębokości
-    atm_pressure:       101325.0     # [Pa]
+    enable_drift: true               # false → tylko szum biały, bez biasu i random walk
+    fluid_density:              1025.0  # [kg/m³] woda morska
+    atm_pressure:           101325.0    # [Pa]
+
+    pressure_noise_stddev:      20.0    # [Pa] ≈ rozdzielczość 0.2 mbar
+    pressure_bias_initial_std:  500.0   # [Pa] błąd absolutny temp. ±200 mbar → ~500 Pa po kalibracji
+    pressure_bias_walk_std:       1.0   # [Pa/√s] dryf temperatury wody w czasie misji
