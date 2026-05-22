@@ -11,8 +11,8 @@ Równolegle uruchom węzły ROS2:
     ros2 launch mezzo_navi mezzo_navi.launch.py
 
 Publikuje:
-    /auv/pose      (geometry_msgs/PoseStamped)   – pozycja i orientacja robota, 50 Hz
-    /auv/velocity  (geometry_msgs/TwistStamped)  – prędkość w układzie ciała, 50 Hz
+    /auv/sim/pose      (geometry_msgs/PoseStamped)   – ground truth pozycja i orientacja, 50 Hz
+    /auv/sim/velocity  (geometry_msgs/TwistStamped)  – ground truth prędkość w układzie ciała, 50 Hz
 
 Subskrybuje:
     /auv/thruster_cmds (std_msgs/Float64MultiArray) – komendy silników [N] z mezzo_navi
@@ -66,7 +66,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from fossen import FossenPlugin
 
 from sim_thruster_driver import SimThrusterDriver
-from sim_sensor_drivers import SimAhrsDriver, SimDvlDriver, SimDepthDriver
+from sim_sensor_drivers import SimAhrsDriver, SimDvlDriver, SimDepthDriver, SimLidarDriver
 
 # ---------------------------------------------------------------------------
 URDF_PATH = "/tmp/bluerov2.urdf"  # generowany przez sim_robot.sh przed startem
@@ -193,13 +193,16 @@ class IsaacRosNode(Node):
 
     def __init__(self):
         super().__init__("isaac_sim")
-        self.declare_parameter("physics_dt",    0.01)
-        self.declare_parameter("render_dt",     0.05)
-        self.declare_parameter("robot_start_z", ROBOT_START_Z)
-        self.declare_parameter("start_paused",  True)
+        self.declare_parameter("physics_dt",       0.01)
+        self.declare_parameter("render_dt",        0.05)
+        self.declare_parameter("robot_start_z",    ROBOT_START_Z)
+        self.declare_parameter("start_paused",     True)
+        self.declare_parameter("ahrs_enable_bias",  False)
+        self.declare_parameter("dvl_enable_bias",   False)
+        self.declare_parameter("depth_enable_bias", False)
 
-        self._pub_pose    = self.create_publisher(PoseStamped, "/auv/pose", 10)
-        self._pub_vel     = self.create_publisher(TwistStamped, "/auv/velocity", 10)
+        self._pub_pose    = self.create_publisher(PoseStamped, "/auv/sim/pose", 10)
+        self._pub_vel     = self.create_publisher(TwistStamped, "/auv/sim/velocity", 10)
         self._sim_driver  = None   # ustawiany przez set_thruster_driver()
 
         self._sub_thrusts = self.create_subscription(
@@ -264,9 +267,14 @@ def main():
     with open(_SENSOR_CONFIG) as f:
         sensor_config = yaml.safe_load(f)["sensors"]
 
-    sim_ahrs  = SimAhrsDriver(ros_node, sensor_config["ahrs"])
-    sim_dvl   = SimDvlDriver(ros_node,  sensor_config["dvl"])
+    sensor_config["ahrs"]["enable_drift"]  = ros_node.get_parameter("ahrs_enable_bias").value
+    sensor_config["dvl"]["enable_drift"]   = ros_node.get_parameter("dvl_enable_bias").value
+    sensor_config["depth"]["enable_drift"] = ros_node.get_parameter("depth_enable_bias").value
+
+    sim_ahrs  = SimAhrsDriver(ros_node,  sensor_config["ahrs"])
+    sim_dvl   = SimDvlDriver(ros_node,   sensor_config["dvl"])
     sim_depth = SimDepthDriver(ros_node, sensor_config["depth"])
+    sim_lidar = SimLidarDriver(ros_node, sensor_config["lidar"])
 
     physics_dt = ros_node.get_parameter("physics_dt").value
     render_dt  = ros_node.get_parameter("render_dt").value
@@ -297,14 +305,15 @@ def main():
     with open(_FOSSEN_CONFIG) as f:
         fossen_config = yaml.safe_load(f)
 
-    fossen = FossenPlugin(robot_prim_path, fossen_config)
-    fossen.initialize(robot, art_view)
-    world.add_physics_callback("fossen_hydrodynamics", fossen.step)
-
-    # SimThrusterDriver: osobny physics callback — niezależny od Fossena.
-    # W rzeczywistym robocie tę rolę pełni esc_driver (auv_drivers) na companion.
+    # SimThrusterDriver inicjalizuje się pierwszy — tworzy jedyny SimulationView.
+    # FossenPlugin dostaje phx_art i referencję do sim_driver; łączy siły silników
+    # z hydrodynamiką w jednym wywołaniu apply_forces_and_torques_at_position,
+    # eliminując problem nadpisywania przy dwóch osobnych callbackach.
     sim_driver.initialize(robot, robot_prim_path)
-    world.add_physics_callback("sim_thruster_driver", sim_driver.step)
+
+    fossen = FossenPlugin(robot_prim_path, fossen_config)
+    fossen.initialize(robot, sim_driver.get_phx_art(), sim_driver)
+    world.add_physics_callback("fossen_hydrodynamics", fossen.step)
 
     print(f"[isaac_sim] Fossen: {_FOSSEN_CONFIG}")
     print(f"[isaac_sim] SimThrusterDriver: {_THRUSTER_CONFIG}")
@@ -321,11 +330,13 @@ def main():
     ahrs_dt     = 1.0 / float(sensor_config["ahrs"]["rate_hz"])
     dvl_dt      = 1.0 / float(sensor_config["dvl"]["rate_hz"])
     depth_dt    = 1.0 / float(sensor_config["depth"]["rate_hz"])
+    lidar_dt    = 1.0 / float(sensor_config["lidar"]["rate_hz"])
 
     last_pose_t  = time.monotonic()
     last_ahrs_t  = time.monotonic()
     last_dvl_t   = time.monotonic()
     last_depth_t = time.monotonic()
+    last_lidar_t = time.monotonic()
     step_dt      = 1.0 / 60.0
 
     while simulation_app.is_running():
@@ -346,7 +357,7 @@ def main():
                 paused = False
                 print("[isaac_sim] Symulacja uruchomiona.")
                 # Resetuj timery żeby uniknąć spikea z nagromadzonego dt
-                last_pose_t = last_ahrs_t = last_dvl_t = last_depth_t = time.monotonic()
+                last_pose_t = last_ahrs_t = last_dvl_t = last_depth_t = last_lidar_t = time.monotonic()
             elapsed = time.monotonic() - t0
             if elapsed < step_dt:
                 time.sleep(step_dt - elapsed)
@@ -379,6 +390,10 @@ def main():
         if now - last_depth_t >= depth_dt:
             last_depth_t = now
             sim_depth.publish(robot)
+
+        if now - last_lidar_t >= lidar_dt:
+            last_lidar_t = now
+            sim_lidar.publish(robot)
 
         elapsed = time.monotonic() - t0
         if elapsed < step_dt:

@@ -17,3 +17,13 @@ navi:
       y:   {kp: 0.25, kd: 0, max_vel: 0.5}
       z:   {kp: 0.25, kd: 0, max_vel: 0.5}
       yaw: {kp: 0.25, kd: 0, max_vel: 0.5}   # [rad/s]
+
+  local_planner:
+    rate_hz:          10.0
+    acceptance_radius: 0.3   # [m]   — cel końcowy
+    acceptance_yaw:    0.1   # [rad] — cel końcowy
+    transit_radius:    1.0   # [m]   — WP pośredni
+    heading_tol:       0.15  # [rad]   — tolerancja obrotu przed startem jazdy (~9°)
+    v_cruise:          0.4   # [m/s]   — prędkość przelotowa marchewki
+    a_max:             0.15  # [m/s²]  — przyspieszenie / hamowanie marchewki
+    omega_max:         0.3   # [rad/s] — max prędkość kątowa yaw carrot

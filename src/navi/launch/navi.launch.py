@@ -28,6 +28,7 @@ def generate_launch_description():
         package="navi",
         executable="local_planner",
         name="local_planner",
+        parameters=[{"navigation_config": nav_cfg}],
         output="screen",
     )
 

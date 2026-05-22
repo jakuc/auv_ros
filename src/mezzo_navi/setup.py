@@ -24,6 +24,7 @@ setup(
             "velocity_controller  = mezzo_navi.velocity_controller:main",
             "thruster_allocator   = mezzo_navi.thruster_allocator:main",
             "depth_pose_converter = mezzo_navi.depth_pose_converter:main",
+            "odometry_relay       = mezzo_navi.odometry_relay:main",
         ],
     },
 )

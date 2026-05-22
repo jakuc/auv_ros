@@ -9,8 +9,9 @@ Tutaj: ta sama granica ROS (/auv/thruster_cmds, Float64MultiArray, [N]),
 ale zamiast ESC — przyłożenie sił do fizyki PhysX przez tensor API Isaac Sim.
 
 Plugin NIE jest węzłem ROS — działa wewnątrz procesu isaac_sim.py.
-Subskrypcja ROS aktualizuje bufor komend przez set_thrusts(); step(dt)
-jest wywoływane jako physics callback przez world.add_physics_callback().
+Subskrypcja ROS aktualizuje bufor komend przez set_thrusts(); siły obliczane
+przez compute_wrench_world() i aplikowane przez FossenPlugin.step() razem
+z hydrodynamiką w jednym wywołaniu apply_forces_and_torques_at_position.
 """
 
 import threading
@@ -35,7 +36,10 @@ class SimThrusterDriver:
     Użycie (w isaac_sim.py):
         driver = SimThrusterDriver(thruster_config)
         driver.initialize(robot, robot_prim_path)
-        world.add_physics_callback("sim_thruster_driver", driver.step)
+        fossen.initialize(robot, driver.get_phx_art(), driver)
+        world.add_physics_callback("fossen_hydrodynamics", fossen.step)
+        # Fossen łączy siły silników (driver.compute_wrench_world()) z hydrodynamiką
+        # w jednym wywołaniu apply_forces — brak osobnego callbacka dla silnikow.
         # W callbacku ROS:
         driver.set_thrusts(np.array(msg.data))
     """
@@ -66,7 +70,11 @@ class SimThrusterDriver:
         self._phx_idx  = None
 
     def initialize(self, robot, robot_path: str) -> None:
-        """Inicjalizuj tensor API. Wywołaj po world.reset()."""
+        """Inicjalizuj tensor API. Wywołaj po world.reset().
+
+        Tworzy jedyny SimulationView w procesie — przekaż phx_art do FossenPlugin
+        przez get_phx_art(), żeby uniknąć tworzenia drugiego view (unieważnia pierwsze).
+        """
         self._robot = robot
 
         import omni.physics.tensors as phx_tensor
@@ -79,35 +87,30 @@ class SimThrusterDriver:
         self._phx_idx = np.array([0], dtype=np.uint32)
         print(f"[sim_thruster_driver] {self._n} silnikow, {self._n_links} linkow")
 
+    def get_phx_art(self):
+        """Zwróć współdzielony ArticulationView — używany przez FossenPlugin."""
+        return self._phx_art
+
     def set_thrusts(self, thrusts: np.ndarray) -> None:
         """Aktualizuj komendy [N]. Wywoływane z ROS callback (inny wątek)."""
         with self._lock:
             n = min(len(thrusts), self._n)
             self._thrusts[:n] = thrusts[:n]
 
-    def step(self, dt: float) -> None:
-        """Physics callback — przyłącza siły silników do PhysX."""
-        if self._phx_art is None:
-            return
+    def compute_wrench_world(self) -> tuple[np.ndarray, np.ndarray]:
+        """Oblicza wrench silników w układzie świata (bez aplikowania do PhysX).
 
+        Wywoływane z FossenPlugin.step() — siły silników i hydrodynamiki łączone
+        w jednym wywołaniu apply_forces_and_torques_at_position, żeby uniknąć
+        problemu nadpisywania przy dwóch osobnych callbackach.
+        """
         with self._lock:
             thrusts = self._thrusts.copy()
 
-        # Wrench w układzie ciała
         w        = self._A @ thrusts
         f_body   = w[:3]
         tau_body = w[3:]
 
-        # Transformacja do układu świata (PhysX is_global=True)
         _, quat = self._robot.get_world_pose()
         R        = _quat_to_rot(np.asarray(quat, dtype=float))
-        f_world   = R @ f_body
-        tau_world = R @ tau_body
-
-        forces  = np.zeros((1, self._n_links, 3), dtype=np.float32)
-        torques = np.zeros((1, self._n_links, 3), dtype=np.float32)
-        forces [0, 0, :] = f_world
-        torques[0, 0, :] = tau_world
-        self._phx_art.apply_forces_and_torques_at_position(
-            forces, torques, None, self._phx_idx, True
-        )
+        return R @ f_body, R @ tau_body

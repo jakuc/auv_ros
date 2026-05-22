@@ -19,6 +19,13 @@ def generate_launch_description():
             output="screen",
         ),
         Node(
+            package="mezzo_navi",
+            executable="odometry_relay",
+            name="odometry_relay",
+
+            output="screen",
+        ),
+        Node(
             package="robot_localization",
             executable="ekf_node",
             name="ekf_node",

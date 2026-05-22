@@ -1,12 +1,12 @@
 fossen:
   # Fizyczne właściwości robota
-  mass: 15.22             # [kg] suma mas linków URDF (14.8 base + 6×0.07 thrustery)
+  mass: 15.223            # [kg] 14.8 base + 6×0.07 thrustery + 3×0.001 sensor frames
   water_surface_z: 0.0      # [m] poziom powierzchni wody w układzie świata
-  enable_surface_check: false  # true → skaluje hydro przez ułamek zanurzenia (0 nad wodą = brak sił); false → hydro pełna zawsze
-  enable_buoyancy: true       # false → wyłącza tylko siłę wyporu, tłumienie i koriolisa nadal działają
+  enable_surface_check: true   # true → skaluje hydro przez ułamek zanurzenia (0 nad wodą = brak sił); false → hydro pełna zawsze
+  enable_buoyancy: true      # false → wyłącza tylko siłę wyporu, tłumienie i koriolisa nadal działają
   draft_z: 0.2552           # [m] całkowita wysokość kadłuba w osi Z
   keel_from_origin: 0.2552  # [m] odległość od USD origin do dna kadłuba (= draft_z gdy origin przy górnej powierzchni)
-  buoyancy_excess_kg: 0.200  # [kg] nadmiarowy wypór netto (B - W = excess*g)
+  buoyancy_excess_kg: 0.200  # [kg] nadmiarowy wypór netto (B - W = excess*g); regulator utrzymuje głębokość małym ujemnym wrenczem
   water_density: 1025.0   # [kg/m³] woda morska
   gravity: 9.81           # [m/s²]
 

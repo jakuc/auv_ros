@@ -51,7 +51,9 @@
        Na HW te pozycje wyznaczają lever arm dla EKF. -->
 
   <!-- AHRS (MTi-600): wewnątrz rury elektronicznej, środek-góra kadłuba -->
-  <link name="${ns}/ahrs_link"/>
+  <link name="${ns}/ahrs_link">
+    <inertial><mass value="0.001"/><inertia ixx="1e-6" iyy="1e-6" izz="1e-6" ixy="0" ixz="0" iyz="0"/></inertial>
+  </link>
   <joint name="${ns}/ahrs_joint" type="fixed">
     <parent link="${ns}/base_link"/>
     <child  link="${ns}/ahrs_link"/>
@@ -59,7 +61,9 @@
   </joint>
 
   <!-- DVL: spód kadłuba, lekko z tyłu; Z obrócone o PI — wskazuje w dół (w stronę dna) -->
-  <link name="${ns}/dvl_link"/>
+  <link name="${ns}/dvl_link">
+    <inertial><mass value="0.001"/><inertia ixx="1e-6" iyy="1e-6" izz="1e-6" ixy="0" ixz="0" iyz="0"/></inertial>
+  </link>
   <joint name="${ns}/dvl_joint" type="fixed">
     <parent link="${ns}/base_link"/>
     <child  link="${ns}/dvl_link"/>
@@ -67,7 +71,9 @@
   </joint>
 
   <!-- Depth (Bar30): bok ramy, wystawiony na wodę -->
-  <link name="${ns}/depth_link"/>
+  <link name="${ns}/depth_link">
+    <inertial><mass value="0.001"/><inertia ixx="1e-6" iyy="1e-6" izz="1e-6" ixy="0" ixz="0" iyz="0"/></inertial>
+  </link>
   <joint name="${ns}/depth_joint" type="fixed">
     <parent link="${ns}/base_link"/>
     <child  link="${ns}/depth_link"/>

@@ -6,49 +6,49 @@ mezzo_navi:
     velocity_filter: 0.0   # [s] EMA na pomiarze prędkości — tłumi szum Isaaca
 
     x:
-      kp: 12
-      ki: 7
-      kd: 5
-      derivative_filter: 0.00   # [s] tau filtra D (~3 Hz cutoff)
+      kp: 5
+      ki: 2
+      kd: 1
+      derivative_filter: 0.10   # [s] tau filtra D (~3 Hz cutoff)
       max_integral: 10.0
       max_output:   30.0   # [N]
 
     y:
-      kp: 20
-      ki: 10
-      kd: 5
-      derivative_filter: 0.00
+      kp: 5
+      ki: 2
+      kd: 1
+      derivative_filter: 0.10
       max_integral: 10.0
       max_output:   30.0
 
     z:
-      kp: 20
-      ki: 10
-      kd: 5
-      derivative_filter: 0.00
+      kp: 5
+      ki: 2
+      kd: 1
+      derivative_filter: 0.10
       max_integral: 10.0
-      max_output:   30.0
+      max_output:   60.0
       # preset_integral = -(buoyancy_excess_kg * g) / ki
-      #                 = -(0.200 * 9.81) / 10 = -0.196
+      #                 = -(0.200 * 9.81) / 5 = -0.392
       # Zmienialny w locie: ros2 param set /velocity_controller z.preset_integral <val>
-      preset_integral: -0.196
+      preset_integral: -0.392
 
     roll_damp:
-      kp: 0
-      kd: 0
-      derivative_filter: 0.00
+      kp: 2
+      kd: 0.5
+      derivative_filter: 0.10
       max_output: 20.0
 
     pitch_damp:
-      kp: 0
-      kd: 0
-      derivative_filter: 0.00
+      kp: 2
+      kd: 0.5
+      derivative_filter: 0.10
       max_output: 15.0
 
     yaw:
-      kp:  7
-      ki:  3
-      kd:  2
-      derivative_filter: 0.00
+      kp:  2
+      ki:  1
+      kd:  0.5
+      derivative_filter: 0.10 
       max_integral: 5.0
       max_output:   20.0
