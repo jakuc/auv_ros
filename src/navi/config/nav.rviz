@@ -37,6 +37,13 @@ Visualization Manager:
       Value: true
       Shaft Length: 0.5
       Head Length: 0.3
+    - Class: rviz_default_plugins/PointCloud2
+      Name: LiDAR
+      Topic: /auv/lidar
+      Value: true
+      Size (m): 0.05
+      Color Transformer: FlatColor
+      Color: 0; 255; 100
   Global Options:
     Fixed Frame: world
     Frame Rate: 10

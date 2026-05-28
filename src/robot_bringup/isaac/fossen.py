@@ -193,8 +193,29 @@ class FossenPlugin:
         position, quat  = self._robot.get_world_pose()
         position        = np.asarray(position, dtype=float)
         quat            = np.asarray(quat,     dtype=float)   # [w, x, y, z]
-        v_lin_world     = np.asarray(self._robot.get_linear_velocity(),  dtype=float)
-        v_ang_world     = np.asarray(self._robot.get_angular_velocity(), dtype=float)
+        v_lin_raw       = self._robot.get_linear_velocity()
+        v_ang_raw       = self._robot.get_angular_velocity()
+        v_lin_world     = np.asarray(v_lin_raw, dtype=float)
+        v_ang_world     = np.asarray(v_ang_raw, dtype=float)
+
+        # Guard: bad read (wrong dimensions, NaN, Inf, or zero quaternion)
+        quat_norm = float(np.linalg.norm(quat))
+        bad = (
+            position.ndim != 1 or quat.ndim != 1
+            or v_lin_world.ndim != 1 or v_ang_world.ndim != 1
+            or np.any(~np.isfinite(position))
+            or np.any(~np.isfinite(quat))
+            or quat_norm < 1e-6
+            or np.any(~np.isfinite(v_lin_world))
+            or np.any(~np.isfinite(v_ang_world))
+        )
+        if bad:
+            if not hasattr(self, "_nan_warned"):
+                self._nan_warned = True
+                print(f"[fossen] BAD READ — pos={position} quat={quat}(norm={quat_norm:.4f}) "
+                      f"v_lin={v_lin_world}(ndim={v_lin_world.ndim}) "
+                      f"v_ang={v_ang_world}(ndim={v_ang_world.ndim})")
+            return
 
         # 2. Pierwszy krok — nie przykładaj sił
         if self._first_step:
@@ -241,4 +262,10 @@ class FossenPlugin:
             f_world   = f_world   + thr_f   * submerged
             tau_world = tau_world + thr_tau * submerged
 
+        if np.any(~np.isfinite(f_world)) or np.any(~np.isfinite(tau_world)):
+            if not hasattr(self, "_force_nan_warned"):
+                self._force_nan_warned = True
+                print(f"[fossen] NaN FORCE — quat={quat} R={R} "
+                      f"f_body={f_body} f_world={f_world} tau={tau_world}")
+            return
         self._apply_wrench(f_world, tau_world)

@@ -23,6 +23,7 @@ Architektura sprzętu symulowanego:
                                               EscDriverNode (auv_drivers) → serial → ESC → T200
 """
 
+import signal
 import sys
 import time
 import pathlib
@@ -42,7 +43,7 @@ import omni.usd
 from omni.isaac.core import World
 from omni.isaac.core.articulations import Articulation, ArticulationView
 from omni.isaac.core.prims import XFormPrim
-from pxr import Gf, Usd, UsdGeom, UsdLux, UsdPhysics
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics
 
 import numpy as np
 import rclpy
@@ -75,8 +76,9 @@ _THIS_DIR        = pathlib.Path(__file__).parent
 _FOSSEN_CONFIG   = _THIS_DIR.parent / "config" / "fossen.yaml"
 _THRUSTER_CONFIG = _THIS_DIR.parent / "config" / "thrusters.yaml"
 _SENSOR_CONFIG   = _THIS_DIR.parent / "config" / "sensors.yaml"
+_WORLD_CONFIG    = _THIS_DIR.parent / "config" / "world.yaml"
 
-ROBOT_START_Z  = -5.0   # [m] — pod wodą
+ROBOT_START_Z  = 0.0   # [m]
 POSE_RATE_HZ   = 50.0
 
 
@@ -117,19 +119,6 @@ def _find_robot_prim_path() -> str:
 
 
 # ---------------------------------------------------------------------------
-def add_water_plane(stage) -> None:
-    """Dodaje wizualną płaszczyznę wody na z=0."""
-    plane = UsdGeom.Mesh.Define(stage, "/World/water_surface")
-    plane.GetPointsAttr().Set([
-        Gf.Vec3f(-50, -50, 0), Gf.Vec3f( 50, -50, 0),
-        Gf.Vec3f( 50,  50, 0), Gf.Vec3f(-50,  50, 0),
-    ])
-    plane.GetFaceVertexCountsAttr().Set([4])
-    plane.GetFaceVertexIndicesAttr().Set([0, 1, 2, 3])
-    plane.GetDisplayColorAttr().Set([Gf.Vec3f(0.0, 0.2, 0.6)])
-    UsdGeom.Imageable(plane.GetPrim()).MakeVisible()
-    print("[isaac_sim] Płaszczyzna wody dodana na z=0")
-
 
 def ensure_collision_api(stage, robot_prim_path: str) -> None:
     """Zapewnia geometrię kolizji na base_link.
@@ -168,7 +157,151 @@ def ensure_collision_api(stage, robot_prim_path: str) -> None:
     print("[isaac_sim] Collision box created (URDF importer fallback)")
 
 
+def add_rtx_lidar(robot_prim_path: str):
+    """Tworzy RTX LiDAR prim. initialize() i add_point_cloud_data_to_frame()
+    muszą być wywołane PÓŹNIEJ (po sim_driver.initialize()) z istniejącym sim view."""
+    from omni.isaac.sensor import LidarRtx
+
+    stage  = omni.usd.get_context().get_stage()
+    parent = robot_prim_path
+    for prim in Usd.PrimRange(stage.GetPrimAtPath(robot_prim_path)):
+        if "base_link" in prim.GetName():
+            parent = prim.GetPath().pathString
+            break
+
+    lidar_path = f"{parent}/Lidar"
+    existing = stage.GetPrimAtPath(lidar_path)
+    if existing.IsValid():
+        stage.RemovePrim(lidar_path)
+        print(f"[isaac_sim] Usunięto stary LiDAR prim: {lidar_path}")
+
+    omni.kit.commands.execute(
+        "IsaacSensorCreateRtxLidar",
+        path="/Lidar",
+        parent=parent,
+        config="lidar_spherical",
+    )
+    lidar = LidarRtx(prim_path=lidar_path, name="auv_lidar")
+    print(f"[isaac_sim] RTX LiDAR prim: {lidar_path}")
+    return lidar
+
+
+def probe_rtx_lidar_api() -> None:
+    """Diagnostyka — wypisuje co jest dostępne w modułach sensorów Isaac Sim."""
+    # Metody LidarRtx
+    try:
+        from omni.isaac.sensor import LidarRtx
+        members = [x for x in dir(LidarRtx) if not x.startswith("_")]
+        print(f"[lidar-api] LidarRtx methods: {members}")
+    except Exception as e:
+        print(f"[lidar-api] LidarRtx: {e}")
+
+    # Dostępne annotatory replicatora
+    try:
+        import omni.replicator.core as rep
+        annotators = rep.AnnotatorRegistry.get_registered_annotators()
+        lidar_ann = [a for a in annotators if "lidar" in a.lower() or "point" in a.lower()]
+        print(f"[lidar-api] Annotatory LiDAR/PointCloud: {lidar_ann}")
+    except Exception as e:
+        print(f"[lidar-api] AnnotatorRegistry: {e}")
+
+    # Pliki konfigów JSON dla RTX LiDAR
+    try:
+        import importlib.util, os
+        spec = importlib.util.find_spec("omni.isaac.sensor")
+        if spec:
+            pkg_dir = os.path.dirname(spec.origin)
+            for root, _, files in os.walk(pkg_dir):
+                for f in files:
+                    if f.endswith(".json") and "lidar" in f.lower():
+                        print(f"[lidar-api] config: {os.path.join(root, f)}")
+    except Exception as e:
+        print(f"[lidar-api] config search: {e}")
+
+
+def add_tunnel_mesh(stage, config: dict) -> None:
+    """Wczytuje mesh tunelu do sceny jako statyczny obiekt z kolizją.
+
+    Przy pierwszym uruchomieniu Isaac Sim konwertuje OBJ → USD (cache obok .obj).
+    Kolejne uruchomienia używają gotowego .usd — znacznie szybsze ładowanie.
+
+    Po załadowaniu: ustaw pozycję/skalę ręcznie w GUI (Stage → Transform),
+    odczytaj wartości z panelu właściwości i wpisz do world.yaml.
+    """
+    if not config.get("enabled", True):
+        print("[isaac_sim] Tunel wyłączony w world.yaml — pomijam")
+        return
+
+    obj_path = _THIS_DIR.parent / config["obj_path"]
+    if not obj_path.exists():
+        print(f"[isaac_sim] Brak mesha tunelu: {obj_path} — pomijam")
+        return
+
+    usd_path = obj_path.with_suffix(".usd")
+    if not usd_path.exists():
+        print(f"[isaac_sim] Konwertuję {obj_path.name} → USD (jednorazowo, może chwilę potrwać)...")
+        import asyncio
+        import omni.kit.asset_converter as converter_module
+
+        async def _convert():
+            converter = converter_module.get_instance()
+            task = converter.create_converter_task(str(obj_path), str(usd_path))
+            return await task.wait_until_finished()
+
+        loop = asyncio.get_event_loop()
+        ok = loop.run_until_complete(_convert())
+        if not ok:
+            print(f"[isaac_sim] Konwersja OBJ → USD nieudana — pomijam tunel")
+            return
+        print(f"[isaac_sim] Konwersja zakończona: {usd_path.name}")
+
+    from omni.isaac.core.utils.stage import add_reference_to_stage
+    prim_path = "/World/tunnel"
+    add_reference_to_stage(usd_path=str(usd_path), prim_path=prim_path)
+    prim = stage.GetPrimAtPath(prim_path)
+
+    pos      = config.get("position",     [0.0, 0.0, 0.0])
+    rot_deg  = config.get("rotation_deg", [0.0, 0.0, 0.0])
+    scale    = float(config.get("scale",  1.0))
+
+    xf = UsdGeom.Xformable(prim)
+    xf.ClearXformOpOrder()
+    xf.AddTranslateOp().Set(Gf.Vec3d(*pos))
+    xf.AddRotateXYZOp().Set(Gf.Vec3f(*rot_deg))
+    xf.AddScaleOp().Set(Gf.Vec3f(scale, scale, scale))
+
+    if config.get("collision", True):
+        # Kolizja musi być aplikowana na każdym UsdGeom.Mesh w hierarchii —
+        # OBJ importer tworzy geometrię w child primach, nie na rootu referencji.
+        n_meshes = 0
+        for child in Usd.PrimRange(prim):
+            print(f"[tunnel-dbg] prim: {child.GetPath()} type={child.GetTypeName()}")
+            if child.GetTypeName() == "Mesh":
+                UsdPhysics.CollisionAPI.Apply(child)
+                mesh_api = UsdPhysics.MeshCollisionAPI.Apply(child)
+                mesh_api.GetApproximationAttr().Set("none")
+                # physxCollision:doubleSided — promienie od wewnątrz trafiają w obie strony trójkąta
+                child.CreateAttribute("physxCollision:doubleSided", Sdf.ValueTypeNames.Bool, False).Set(True)
+                UsdGeom.Mesh(child).GetDoubleSidedAttr().Set(True)
+                n_meshes += 1
+        if n_meshes == 0:
+            print(f"[isaac_sim] UWAGA: brak primów Mesh w tunelu — stosuję kolizję na rootu")
+            UsdPhysics.CollisionAPI.Apply(prim)
+            UsdPhysics.MeshCollisionAPI.Apply(prim).GetApproximationAttr().Set("none")
+            prim.CreateAttribute("physxCollision:doubleSided", Sdf.ValueTypeNames.Bool, False).Set(True)
+        print(f"[isaac_sim] Kolizja tunelu: {n_meshes} mesh primów")
+
+    print(f"[isaac_sim] Tunel załadowany: {usd_path.name}, pos={pos}, skala={scale}")
+
+
 def setup_lighting(stage) -> None:
+    # SphereLight wewnątrz tunelu — emituje we wszystkich kierunkach z punktu.
+    # DomeLight (niebo) nie dociera do wnętrza zamkniętego mesha.
+    light = UsdLux.SphereLight.Define(stage, "/World/tunnel_light")
+    light.GetIntensityAttr().Set(500000.0)
+    light.GetRadiusAttr().Set(0.5)
+    UsdGeom.Xformable(light.GetPrim()).AddTranslateOp().Set(Gf.Vec3d(6.5, 0.0, -2.5))
+
     dome = UsdLux.DomeLight.Define(stage, "/World/dome_light")
     dome.GetIntensityAttr().Set(300.0)
 
@@ -251,10 +384,20 @@ class IsaacRosNode(Node):
 def main():
     rclpy.init()
 
+    _shutdown = False
+
+    def _signal_handler(sig, frame):
+        nonlocal _shutdown
+        print(f"[isaac_sim] Odebrano sygnał {sig} — zamykam...")
+        _shutdown = True
+
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT,  _signal_handler)
+
     if not pathlib.Path(URDF_PATH).exists():
         raise FileNotFoundError(f"Brak {URDF_PATH} — uruchom przez sim_robot.sh, nie bezpośrednio")
 
-    with open(_THRUSTER_CONFIG) as f:
+    with open(_THRUSTER_CONFIG, encoding="utf-8") as f:
         thruster_config = yaml.safe_load(f)
 
     # SimThrusterDriver tworzony przed węzłem, by callback ROS mógł od razu
@@ -264,7 +407,7 @@ def main():
     ros_node = IsaacRosNode()
     ros_node.set_thruster_driver(sim_driver)
 
-    with open(_SENSOR_CONFIG) as f:
+    with open(_SENSOR_CONFIG, encoding="utf-8") as f:
         sensor_config = yaml.safe_load(f)["sensors"]
 
     sensor_config["ahrs"]["enable_drift"]  = ros_node.get_parameter("ahrs_enable_bias").value
@@ -274,7 +417,6 @@ def main():
     sim_ahrs  = SimAhrsDriver(ros_node,  sensor_config["ahrs"])
     sim_dvl   = SimDvlDriver(ros_node,   sensor_config["dvl"])
     sim_depth = SimDepthDriver(ros_node, sensor_config["depth"])
-    sim_lidar = SimLidarDriver(ros_node, sensor_config["lidar"])
 
     physics_dt = ros_node.get_parameter("physics_dt").value
     render_dt  = ros_node.get_parameter("render_dt").value
@@ -287,29 +429,22 @@ def main():
 
     stage = omni.usd.get_context().get_stage()
     setup_lighting(stage)
-    add_water_plane(stage)
     ensure_collision_api(stage, robot_prim_path)
 
-    world.scene.add_default_ground_plane(z_position=-100.0)
+    with open(_WORLD_CONFIG, encoding="utf-8") as f:
+        world_config = yaml.safe_load(f)["world"]
+    add_tunnel_mesh(stage, world_config["tunnel"])
+
     robot = world.scene.add(Articulation(prim_path=robot_prim_path))
-    # ArticulationView musi być dodany DO SCENY przed world.reset(),
-    # żeby Isaac Sim zarządzał jego tensor view podczas inicjalizacji fizyki.
-    art_view = world.scene.add(ArticulationView(
-        prim_paths_expr=robot_prim_path,
-        name="auv_view",
-    ))
     world.reset()
 
-    set_robot_start_pose(robot_prim_path)
-
-    with open(_FOSSEN_CONFIG) as f:
+    with open(_FOSSEN_CONFIG, encoding="utf-8") as f:
         fossen_config = yaml.safe_load(f)
 
-    # SimThrusterDriver inicjalizuje się pierwszy — tworzy jedyny SimulationView.
-    # FossenPlugin dostaje phx_art i referencję do sim_driver; łączy siły silników
-    # z hydrodynamiką w jednym wywołaniu apply_forces_and_torques_at_position,
-    # eliminując problem nadpisywania przy dwóch osobnych callbackach.
     sim_driver.initialize(robot, robot_prim_path)
+
+    sim_lidar = SimLidarDriver(ros_node, sensor_config["lidar"])
+    set_robot_start_pose(robot_prim_path)
 
     fossen = FossenPlugin(robot_prim_path, fossen_config)
     fossen.initialize(robot, sim_driver.get_phx_art(), sim_driver)
@@ -339,7 +474,7 @@ def main():
     last_lidar_t = time.monotonic()
     step_dt      = 1.0 / 60.0
 
-    while simulation_app.is_running():
+    while simulation_app.is_running() and not _shutdown:
         t0 = time.monotonic()
 
         if paused:
@@ -399,9 +534,11 @@ def main():
         if elapsed < step_dt:
             time.sleep(step_dt - elapsed)
 
+    print("[isaac_sim] Zamykam symulację...")
     ros_node.destroy_node()
     rclpy.shutdown()
     simulation_app.close()
+    print("[isaac_sim] Zamknięto.")
 
 
 if __name__ == "__main__":

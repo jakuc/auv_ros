@@ -13,7 +13,8 @@ Parametr use_sim_ground_truth (domyślnie false):
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseStamped, TwistStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped, TransformStamped
+from tf2_ros import TransformBroadcaster
 
 
 class OdometryRelay(Node):
@@ -25,6 +26,7 @@ class OdometryRelay(Node):
 
         self._pub_pose = self.create_publisher(PoseStamped, "/auv/pose",     10)
         self._pub_vel  = self.create_publisher(TwistStamped, "/auv/velocity", 10)
+        self._tf_broadcaster = TransformBroadcaster(self)
 
         if use_sim:
             self.create_subscription(PoseStamped,  "/auv/sim/pose",     self._cb_sim_pose, 10)
@@ -34,12 +36,24 @@ class OdometryRelay(Node):
             self.create_subscription(Odometry, "/auv/odometry", self._cb_ekf, 10)
             self.get_logger().info("OdometryRelay: EKF")
 
+    def _broadcast_tf(self, pose_msg: PoseStamped) -> None:
+        t = TransformStamped()
+        t.header.stamp    = pose_msg.header.stamp
+        t.header.frame_id = "world"
+        t.child_frame_id  = "bluerov2/base_link"
+        t.transform.translation.x = pose_msg.pose.position.x
+        t.transform.translation.y = pose_msg.pose.position.y
+        t.transform.translation.z = pose_msg.pose.position.z
+        t.transform.rotation      = pose_msg.pose.orientation
+        self._tf_broadcaster.sendTransform(t)
+
     def _cb_ekf(self, msg: Odometry) -> None:
         pose_msg = PoseStamped()
         pose_msg.header.stamp    = msg.header.stamp
         pose_msg.header.frame_id = msg.header.frame_id
         pose_msg.pose            = msg.pose.pose
         self._pub_pose.publish(pose_msg)
+        self._broadcast_tf(pose_msg)
 
         vel_msg = TwistStamped()
         vel_msg.header.stamp    = msg.header.stamp
@@ -49,6 +63,7 @@ class OdometryRelay(Node):
 
     def _cb_sim_pose(self, msg: PoseStamped) -> None:
         self._pub_pose.publish(msg)
+        self._broadcast_tf(msg)
 
     def _cb_sim_vel(self, msg: TwistStamped) -> None:
         self._pub_vel.publish(msg)

@@ -355,8 +355,8 @@ class SimLidarDriver:
     """
     Idealny symulacyjny LiDAR 3D (pełna sfera) oparty na ray castingu PhysX.
 
-    Substytut docelowego sensora galwanometrycznego (galwo + APD + TDC) —
-    brak modelu błędów, dane idealne do testów SLAM.
+    Substytut docelowego sensora galwanometrycznego — brak modelu błędów,
+    dane idealne do testów SLAM.
 
     Użycie (w isaac_sim.py):
         lidar = SimLidarDriver(ros_node, config["sensors"]["lidar"])
@@ -391,19 +391,26 @@ class SimLidarDriver:
         R      = _quat_to_rot(np.asarray(quat_wxyz, dtype=float))
         origin = np.asarray(position, dtype=float)
 
-        dirs_world = (R @ self._ray_dirs.T).T  # (N, 3) — body frame → world frame
+        dirs_world = (R @ self._ray_dirs.T).T
 
         physx    = get_physx_scene_query_interface()
         pts_body = []
+        n_miss   = 0
 
         for dir_w in dirs_world:
             hit = physx.raycast_closest(tuple(origin), tuple(dir_w), self._max_range)
             if not (hit and hit["hit"]):
+                n_miss += 1
                 continue
             if float(hit["distance"]) < self._min_range:
                 continue
             pt_world = np.asarray(hit["position"], dtype=float)
             pts_body.append(R.T @ (pt_world - origin))
+
+        if not hasattr(self, "_dbg_printed"):
+            self._dbg_printed = True
+            pos = [round(float(x), 2) for x in origin]
+            print(f"[lidar-dbg] robot pos={pos}  hits={len(pts_body)}  misses={n_miss}  total_rays={len(dirs_world)}")
 
         if not pts_body:
             return

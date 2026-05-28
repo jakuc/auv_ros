@@ -1,0 +1,8 @@
+world:
+  tunnel:
+    enabled: true
+    obj_path: "meshes/tunel_flipped.obj"  # względem katalogu paczki robot_bringup
+    position:     [20.0, -20.0, 5.0]    # [m]
+    rotation_deg: [0.0, 90.0, 0.0]     # [deg] XYZ Euler
+    scale: 2.0
+    collision: true

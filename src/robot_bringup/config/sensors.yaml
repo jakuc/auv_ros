@@ -62,7 +62,7 @@ sensors:
   lidar:
     rate_hz:             10.0   # [Hz]
     max_range_m:         30.0   # [m]
-    min_range_m:          0.5   # [m] — filtruje trafienia w geometrię robota
-    azimuth_step_deg:     2.0   # [°] — 2° → 180 kierunków w azymucie
-    elevation_step_deg:   2.0   # [°] — 2° → ~88 kierunków w elewacji (~15 840 promieni/skan)
+    min_range_m:          0.5   # [m]
+    azimuth_step_deg:     6.0   # [°] — 6° → ~1 740 promieni/skan (ok. 9× mniej niż 2°)
+    elevation_step_deg:   6.0   # [°]
     frame_id: "bluerov2/base_link"

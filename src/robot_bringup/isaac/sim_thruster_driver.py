@@ -104,13 +104,22 @@ class SimThrusterDriver:
         w jednym wywołaniu apply_forces_and_torques_at_position, żeby uniknąć
         problemu nadpisywania przy dwóch osobnych callbackach.
         """
+        _zero = (np.zeros(3), np.zeros(3))
+
         with self._lock:
             thrusts = self._thrusts.copy()
+
+        if np.any(~np.isfinite(thrusts)):
+            return _zero
 
         w        = self._A @ thrusts
         f_body   = w[:3]
         tau_body = w[3:]
 
         _, quat = self._robot.get_world_pose()
-        R        = _quat_to_rot(np.asarray(quat, dtype=float))
+        quat     = np.asarray(quat, dtype=float)
+        if quat.ndim != 1 or np.linalg.norm(quat) < 1e-6 or np.any(~np.isfinite(quat)):
+            return _zero
+
+        R = _quat_to_rot(quat)
         return R @ f_body, R @ tau_body
