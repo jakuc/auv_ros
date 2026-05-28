@@ -396,13 +396,14 @@ class SimLidarDriver:
         physx    = get_physx_scene_query_interface()
         pts_body = []
         n_miss   = 0
+        ray_len  = self._max_range - self._min_range
 
         for dir_w in dirs_world:
-            hit = physx.raycast_closest(tuple(origin), tuple(dir_w), self._max_range)
+            # Start od min_range — omija kolizję własnego ciała robota
+            ray_start = origin + dir_w * self._min_range
+            hit = physx.raycast_closest(tuple(ray_start), tuple(dir_w), ray_len)
             if not (hit and hit["hit"]):
                 n_miss += 1
-                continue
-            if float(hit["distance"]) < self._min_range:
                 continue
             pt_world = np.asarray(hit["position"], dtype=float)
             pts_body.append(R.T @ (pt_world - origin))

@@ -471,8 +471,16 @@ def main():
     last_ahrs_t  = time.monotonic()
     last_dvl_t   = time.monotonic()
     last_depth_t = time.monotonic()
-    last_lidar_t = time.monotonic()
     step_dt      = 1.0 / 60.0
+
+    # LiDAR w physics callback — odpala się przed renderem, niezależnie od stalli GPU
+    _last_lidar = [time.monotonic()]
+    def _lidar_step(dt):
+        now = time.monotonic()
+        if now - _last_lidar[0] >= lidar_dt:
+            _last_lidar[0] = now
+            sim_lidar.publish(robot)
+    world.add_physics_callback("lidar_scan", _lidar_step)
 
     while simulation_app.is_running() and not _shutdown:
         t0 = time.monotonic()
@@ -492,7 +500,8 @@ def main():
                 paused = False
                 print("[isaac_sim] Symulacja uruchomiona.")
                 # Resetuj timery żeby uniknąć spikea z nagromadzonego dt
-                last_pose_t = last_ahrs_t = last_dvl_t = last_depth_t = last_lidar_t = time.monotonic()
+                last_pose_t = last_ahrs_t = last_dvl_t = last_depth_t = time.monotonic()
+                _last_lidar[0] = time.monotonic()
             elapsed = time.monotonic() - t0
             if elapsed < step_dt:
                 time.sleep(step_dt - elapsed)
@@ -525,10 +534,6 @@ def main():
         if now - last_depth_t >= depth_dt:
             last_depth_t = now
             sim_depth.publish(robot)
-
-        if now - last_lidar_t >= lidar_dt:
-            last_lidar_t = now
-            sim_lidar.publish(robot)
 
         elapsed = time.monotonic() - t0
         if elapsed < step_dt:

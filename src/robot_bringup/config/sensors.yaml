@@ -63,6 +63,6 @@ sensors:
     rate_hz:             10.0   # [Hz]
     max_range_m:         30.0   # [m]
     min_range_m:          0.5   # [m]
-    azimuth_step_deg:     6.0   # [°] — 6° → ~1 740 promieni/skan (ok. 9× mniej niż 2°)
-    elevation_step_deg:   6.0   # [°]
+    azimuth_step_deg:    15.0   # [°] — 15°az/7°el → 600 promieni/skan
+    elevation_step_deg:   7.0   # [°]
     frame_id: "bluerov2/base_link"

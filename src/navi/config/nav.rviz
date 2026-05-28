@@ -44,6 +44,15 @@ Visualization Manager:
       Size (m): 0.05
       Color Transformer: FlatColor
       Color: 0; 255; 100
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+    - Class: rviz_default_plugins/SetInitialPose
+    - Class: rviz_default_plugins/SetGoal
+    - Class: rviz_default_plugins/PublishPoint
   Global Options:
     Fixed Frame: world
     Frame Rate: 10

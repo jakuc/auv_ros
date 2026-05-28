@@ -13,6 +13,11 @@ def generate_launch_description():
 
     return LaunchDescription([
         Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            arguments=["0", "0", "0", "0", "0", "0", "world", "odom"],
+        ),
+        Node(
             package="mezzo_navi",
             executable="depth_pose_converter",
             name="depth_pose_converter",
@@ -22,7 +27,7 @@ def generate_launch_description():
             package="mezzo_navi",
             executable="odometry_relay",
             name="odometry_relay",
-
+            parameters=[{"use_sim_ground_truth": True}],
             output="screen",
         ),
         Node(

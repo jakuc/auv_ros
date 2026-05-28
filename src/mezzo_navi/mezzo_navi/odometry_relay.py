@@ -38,7 +38,7 @@ class OdometryRelay(Node):
 
     def _broadcast_tf(self, pose_msg: PoseStamped) -> None:
         t = TransformStamped()
-        t.header.stamp    = pose_msg.header.stamp
+        t.header.stamp    = self.get_clock().now().to_msg()
         t.header.frame_id = "world"
         t.child_frame_id  = "bluerov2/base_link"
         t.transform.translation.x = pose_msg.pose.position.x
